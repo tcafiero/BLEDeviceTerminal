@@ -1,54 +1,78 @@
-#include <Adafruit_LSM9DS1.h>
-#include <Adafruit_Sensor.h>  // not used in this demo but required!
 #include <MicroShell.h>
 #include <bluefruit.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SparkFunLSM9DS1.h>
+
+volatile bool thresholdAccelGyro_flag = false;
+volatile bool dataRdyAccelGyro_flag = false;
+
+
+LSM9DS1 imu; // Create an LSM9DS1 object to use from here on.
+
+///////////////////////////////
+// Interrupt Pin Definitions //
+///////////////////////////////
+// These can be swapped to any available digital pin:
+const int INT1_PIN_THS = (14); //3 INT1 pin to D3 - will be attached to gyro
+const int INT2_PIN_DRDY = (15); //4 INT2 pin to D4 - attached to accel
+const int INTM_PIN_THS = (16);  //5 INTM_PIN_THS pin to D5
+const int RDYM_PIN = (19);  // RDY pin to D6
+
+
+
 // BLE Service
 BLEDis  bledis;
 BLEUart bleuart;
 BLEBas  blebas;
 
 
-#define BUFFERSIZE 2
-
-Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1();  // i2c sensor
-
+#define BUFFERSIZE 100
 
 typedef struct {
-  float x;
-  float y;
-  float z;
+  int16_t x;
+  int16_t y;
+  int16_t z;
 } vector_t;
 
 typedef struct {
-  sensors_event_t a;
-  sensors_event_t g;
-  sensors_event_t m;
-  unsigned short int t;
-  unsigned short int ts;
+  vector_t a;
+  vector_t g;
+  vector_t m;
+  uint16_t t;
+  uint16_t ts;
 } record_t;
 
+void bleout( char* b, int len, int blocklen )
+{
+  int block;
+  for (block = 0; block < len / blocklen; block++)
+  {
+    bleuart.write(&b[block * blocklen], blocklen);
+  }
+  bleuart.write(&b[block * blocklen], len % blocklen);
+}
 
 
 class CyclicBuffer
 {
   public:
     record_t record[BUFFERSIZE];
-    void clearRecords();
-    //void setRecord(int ax, int ay, int az, int gx, int gy, int gz, int mx, int my, int mz, int t, int ts);
-    record_t* CyclicBuffer::getRecord();
-    void transmitRecords();
+    void begin();
+    record_t* getRecord();
+    void sendCapturedRecords();
     char  getHead();
   private:
     char head;   // index for the top of the buffer
 };
 
 
-void CyclicBuffer::clearRecords()
+void CyclicBuffer::begin()
 {
   head = BUFFERSIZE - 1;
   for (char  i = 0; i < BUFFERSIZE; i++)
   {
-    record[i].a.acceleration.x = 0xcafe;
+    record[i].a.x = 1792;
   }
 }
 
@@ -61,58 +85,33 @@ record_t* CyclicBuffer::getRecord()
 {
   head++;
   head %= BUFFERSIZE;
-  record[(head + 1) % BUFFERSIZE].a.acceleration.x = 0xcafe;
+  record[(head + 1) % BUFFERSIZE].a.x = 1792;
   return &record[head];
 }
 
-#if 0
-void CyclicBuffer::setRecord(int ax, int ay, int az, int gx, int gy, int gz, int mx, int my, int mz, int t, int ts)
-{
-  head++;
-  head %= BUFFERSIZE;
-  record[head].a.x = ax;
-  record[head].a.y = ay;
-  record[head].a.z = az;
-  record[head].g.x = gx;
-  record[head].g.y = gy;
-  record[head].g.z = gz;
-  record[head].m.x = mx;
-  record[head].m.y = my;
-  record[head].m.z = mz;
-  record[head].t = t;
-  record[head].ts = ts;
-  record[(head + 1) % BUFFERSIZE].a.x = 0xcafe;
-}
-#endif
-
-
-void CyclicBuffer::transmitRecords()
+void CyclicBuffer::sendCapturedRecords()
 {
   char i = head;
+  char j = 0;
   char b[100];
   do
   {
+    if ((j++) >= BUFFERSIZE) return;
     i++;
     i %= BUFFERSIZE;
   }
-  while (record[i].a.acceleration.x == 0xcafe);
-  while (record[i].a.acceleration.x != 0xcafe);
+  while (record[i].a.x == 1792);
+  while (record[i].a.x != 1792)
   {
-    sprintf(b, "{\"a:\"[%5.2f,%5.2f,%5.2f],\n", record[head].a.acceleration.x, record[head].a.acceleration.y, record[head].a.acceleration.z);
-    bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"g\":[%5.2f,%5.2f,%5.2f],\n", record[head].g.gyro.x, record[head].g.gyro.y, record[head].g.gyro.z);
-    bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"m\":[%5.2f,%5.2f,%5.2f],\n", record[head].m.magnetic.x, record[head].m.magnetic.y, record[head].m.magnetic.z);
-    bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"t\":%d,\n", record[head].a.timestamp);
-    bleuart.write( b, strlen(b) );
-    delay(2);
+    Serial.println("2");
+    sprintf(b, "{\"a:\"[%05d,%05d,%05d],\n", record[i].a.x, record[i].a.y, record[i].a.z);
+    bleout( b, strlen(b), 15 );
+    sprintf(b, "\"g\":[%05d,%05d,%05d],\n", record[i].g.x, record[i].g.y, record[i].g.z);
+    bleout( b, strlen(b), 15);
+    sprintf(b, "\"m\":[%05d,%05d,%05d],\n", record[i].m.x, record[i].m.y, record[i].m.z);
+    bleout( b, strlen(b), 15);
+    sprintf(b, "\"t\":%d}\n", record[i].ts);
+    bleout( b, strlen(b), 15);
     i++;
     i %= BUFFERSIZE;
   }
@@ -137,14 +136,12 @@ CyclicBuffer cb;
   any redistribution
 *********************************************************************/
 bool IsConnect, DoSend;
-unsigned short int TestValue;
-
-
 
 // Software Timer for blinking RED LED
 SoftwareTimer blinkTimer;
-SoftwareTimer highFrequencySampling;
-SoftwareTimer lowFrequencyTransmitting;
+
+// Software Timer for IMU data sampling
+SoftwareTimer imuDataSampling;
 
 char* TemplateFunc(int a, char* b)
 {
@@ -188,57 +185,146 @@ char* ResetTimestamp()
   return "ok";
 }
 
-void highFrequencySampling_callback(/*TimerHandle_t xTimerID*/)
+void imuDataSampling_callback()
 {
-  // Don't call any other FreeRTOS blocking API()
-  // Perform background task(s) here
-   // must be implemented reading from imu component
-  // following only for testing purpose
   record_t* record;
   record = cb.getRecord();
-  lsm.read();
-  sensors_event_t temp;
-  //sensors_event_t a, m, g, temp;
-  lsm.getEvent(&(record->a), &(record->m), &(record->g), &temp);
-  Serial.print("Accel X: "); Serial.print(record->a.acceleration.x); Serial.print(" m/s^2");
-  Serial.print("\tY: "); Serial.print(record->a.acceleration.y);     Serial.print(" m/s^2 ");
-  Serial.print("\tZ: "); Serial.print(record->a.acceleration.z);     Serial.println(" m/s^2 ");
-
-  //cb.setRecord(a.acceleration.x, a.acceleration.y, a.acceleration.z, m.magnetic.x, m.magnetic.y, m.magnetic.z, g.gyro.x, g.gyro.y, g.gyro.z, 0, 0);
-  delay(2000);              // wait for 2 ms 
-
+#if 0
+  Serial.println();
+  Serial.print("A: ");
+  Serial.print(imu.ax); Serial.print(", ");
+  Serial.print(imu.ay); Serial.print(", ");
+  Serial.println(imu.az);
+  Serial.print("G: ");
+  Serial.print(imu.gx); Serial.print(", ");
+  Serial.print(imu.gy); Serial.print(", ");
+  Serial.println(imu.gz);
+  Serial.print("M: ");
+  Serial.print(imu.mx); Serial.print(", ");
+  Serial.print(imu.my); Serial.print(", ");
+  Serial.println(imu.mz);
+#endif
+  // Don't call any other FreeRTOS blocking API()
+  // Perform background task(s) here
+  // must be implemented reading from imu component
+  // following only for testing purpose
+  delay(20);
 }
 
 
-void lowFrequencyTransmitting_callback(/*TimerHandle_t xTimerID*/)
+void triggerEventManager_callback()
 {
   char b[100];
   int head = cb.getHead();
   if (IsConnect == true && DoSend == true)
   {
-    
-    sprintf(b, "{\"a:\"[%5.2f,%5.2f,%5.2f],\n", cb.record[head].a.acceleration.x, cb.record[head].a.acceleration.y, cb.record[head].a.acceleration.z);
+    sprintf(b, "{\"a:\"[%05d,%05d,%05d],\n", cb.record[head].a.x, cb.record[head].a.y, cb.record[head].a.z);
     bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"g\":[%5.2f,%5.2f,%5.2f],\n", cb.record[head].g.gyro.x, cb.record[head].g.gyro.y, cb.record[head].g.gyro.z);
+    sprintf(b, "\"g\":[%05d,%05d,%05d],\n", cb.record[head].g.x, cb.record[head].g.y, cb.record[head].g.z);
     bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"m\":[%5.2f,%5.2f,%5.2f],\n", cb.record[head].m.magnetic.x, cb.record[head].m.magnetic.y, cb.record[head].m.magnetic.z);
+    sprintf(b, "\"m\":[%05d,%05d,%05d],\n", cb.record[head].m.x, cb.record[head].m.y, cb.record[head].m.z);
     bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    sprintf(b, "\"t\":%d,\n", cb.record[head].a.timestamp);
+    sprintf(b, "\"t\":%05d,\n", cb.record[head].ts);
     bleuart.write( b, strlen(b) );
-    delay(2);
-    //Serial.print(b);
-    //sprintf(b, "\"ts\":%04x}\n", cb.record[head].ts);
-    //bleuart.write( b, strlen(b) );
-    
-    //Serial.print(b);
   }
-  delay(2000);              // wait for 20 ms
+}
+
+// configureIMU sets up our LSM9DS1 interface, sensor scales
+// and sample rates.
+uint16_t configureIMU()
+{
+  // Set up Device Mode (I2C) and I2C addresses:
+  imu.settings.device.commInterface = IMU_MODE_I2C;
+  imu.settings.device.agAddress = LSM9DS1_AG_ADDR(1);
+  imu.settings.device.mAddress = LSM9DS1_M_ADDR(1);
+
+  // gyro.latchInterrupt controls the latching of the
+  // gyro and accelerometer interrupts (INT1 and INT2).
+  // false = no latching
+  imu.settings.gyro.latchInterrupt = false;
+
+  // Set gyroscope scale to +/-245 dps:
+  imu.settings.gyro.scale = 245;
+  // Set gyroscope (and accel) sample rate to 14.9 Hz
+  imu.settings.gyro.sampleRate = 1;
+  // Set accelerometer scale to +/-2g
+  imu.settings.accel.scale = 2;
+  // Set magnetometer scale to +/- 4g
+  imu.settings.mag.scale = 4;
+  // Set magnetometer sample rate to 0.625 Hz
+  imu.settings.mag.sampleRate = 0;
+
+  // Call imu.begin() to initialize the sensor and instill
+  // it with our new settings.
+  return imu.begin();
+}
+
+void configureLSM9DS1Interrupts()
+{
+  /////////////////////////////////////////////
+  // Configure INT1 - Gyro & Accel Threshold //
+  /////////////////////////////////////////////
+  // For more information on setting gyro interrupt, threshold,
+  // and configuring the intterup, see the datasheet.
+  // We'll configure INT_GEN_CFG_G, INT_GEN_THS_??_G,
+  // INT_GEN_DUR_G, and INT1_CTRL.
+  // 1. Configure the gyro interrupt generator:
+  //  - ZHIE_G: Z-axis high event (more can be or'd together)
+  //  - false: and/or (false = OR) (not applicable)
+  //  - false: latch interrupt (false = not latched)
+  imu.configGyroInt(ZHIE_G, false, false);
+  // 2. Configure the gyro threshold
+  //   - 500: Threshold (raw value from gyro)
+  //   - Z_AXIS: Z-axis threshold
+  //   - 10: duration (based on ODR)
+  //   - true: wait (wait duration before interrupt goes low)
+  imu.configGyroThs(500, Z_AXIS, 10, true);
+  // 3. Configure accelerometer interrupt generator:
+  //   - XHIE_XL: x-axis high event
+  //     More axis events can be or'd together
+  //   - false: OR interrupts (N/A, since we only have 1)
+  imu.configAccelInt(XHIE_XL, false);
+  // 4. Configure accelerometer threshold:
+  //   - 20: Threshold (raw value from accel)
+  //     Multiply this value by 128 to get threshold value.
+  //     (20 = 2600 raw accel value)
+  //   - X_AXIS: Write to X-axis threshold
+  //   - 10: duration (based on ODR)
+  //   - false: wait (wait [duration] before interrupt goes low)
+  imu.configAccelThs(20, X_AXIS, 1, false);
+  // 5. Configure INT1 - assign it to gyro interrupt
+  //   - XG_INT1: Says we're configuring INT1
+  //   - INT1_IG_G | INT1_IG_XL: Sets interrupt source to
+  //     both gyro interrupt and accel
+  //   - INT_ACTIVE_LOW: Sets interrupt to active low.
+  //         (Can otherwise be set to INT_ACTIVE_HIGH.)
+  //   - INT_PUSH_PULL: Sets interrupt to a push-pull.
+  //         (Can otherwise be set to INT_OPEN_DRAIN.)
+  imu.configInt(XG_INT1, INT1_IG_G | INT_IG_XL, INT_ACTIVE_LOW, INT_PUSH_PULL);
+
+  ////////////////////////////////////////////////
+  // Configure INT2 - Gyro and Accel Data Ready //
+  ////////////////////////////////////////////////
+  // Configure interrupt 2 to fire whenever new accelerometer
+  // or gyroscope data is available.
+  // Note XG_INT2 means configuring interrupt 2.
+  // INT_DRDY_XL is OR'd with INT_DRDY_G
+  imu.configInt(XG_INT2, INT_DRDY_XL | INT_DRDY_G, INT_ACTIVE_LOW, INT_PUSH_PULL);
+
+  //////////////////////////////////////
+  // Configure Magnetometer Interrupt //
+  //////////////////////////////////////
+  // 1. Configure magnetometer interrupt:
+  //   - XIEN: axis to be monitored. Can be an or'd combination
+  //     of XIEN, YIEN, or ZIEN.
+  //   - INT_ACTIVE_LOW: Interrupt goes low when active.
+  //   - true: Latch interrupt
+  imu.configMagInt(XIEN, INT_ACTIVE_LOW, true);
+  // 2. Configure magnetometer threshold.
+  //   There's only one threshold value for all 3 mag axes.
+  //   This is the raw mag value that must be exceeded to
+  //   generate an interrupt.
+  imu.configMagThs(10000);
 }
 
 
@@ -248,43 +334,42 @@ void setup()
   delay(100);
   Serial.println("TopView Easy Stroke");
   Serial.println("---------------------\n");
+  cb.begin();
+  // Set up our Arduino pins connected to interrupts.
+  // We configured all of these interrupts in the LSM9DS1
+  // to be active-low.
+  pinMode(INT2_PIN_DRDY, INPUT_PULLUP);
+  pinMode(INT1_PIN_THS, INPUT_PULLUP);
+  pinMode(INTM_PIN_THS, INPUT_PULLUP);
+
+  // The magnetometer DRDY pin (RDY) is not configurable.
+  // It is active high and always turned on.
+  pinMode(RDYM_PIN, INPUT);
+
+  // Turn on the IMU with configureIMU() (defined above)
+  // check the return status of imu.begin() to make sure
+  // it's connected.
+  uint16_t status = configureIMU();
+  if (!status)
+  {
+    Serial.print("Failed to connect to IMU - Status: 0x");
+    Serial.println(status, HEX);
+    while (1) ;
+  }
+  Serial.println("LSM9DS1 9DOF connected.");
+
+
+  // After turning the IMU on, configure the interrupts:
+  configureLSM9DS1Interrupts();
 
   // Initialize blinkTimer for 1000 ms and start it
-  blinkTimer.begin(1000, blink_timer_callback);
-  blinkTimer.start();
-#if 1
-  if (!lsm.begin())
-  {
-    /* There was a problem detecting the LSM9DS1 ... check your connections */
-    Serial.println("Error: No LSM9DS1 detected. Check wiring");
-    delay(200);
-    while (1);
-  }
-#endif
-  Serial.println("LSM9DS1 9DOF connected.");
-  delay(200);
-  // 1.) Set the accelerometer range
-  lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);
-  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_4G);
-  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_8G);
-  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_16G);
+  //blinkTimer.begin(1000, blink_timer_callback);
+  //blinkTimer.start();
+  Scheduler.startLoop(blink_timer_callback);
+  Scheduler.startLoop(imuDataSampling_callback);
+  Scheduler.startLoop(dataRdyAccelGyro_callback);
+  Scheduler.startLoop(thresholdAccelGyro_callback);
 
-  // 2.) Set the magnetometer sensitivity
-  lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);
-  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_8GAUSS);
-  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_12GAUSS);
-  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_16GAUSS);
-
-  // 3.) Setup the gyroscope
-  lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);
-  //lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_500DPS);
-  //lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_2000DPS);
-  // Setup the BLE LED to be enabled on CONNECT
-  // Note: This is actually the default behaviour, but provided
-  // here in case you want to control this LED manually via PIN 19
-  
-  
-  
   Bluefruit.autoConnLed(true);
 
   // Config the peripheral connection with maximum bandwidth
@@ -318,17 +403,53 @@ void setup()
   Serial.println("Please use a BLE Terminal applet to connect in UART mode");
   Serial.println("Once connected, enter commands(s) that you wish to send");
   InitMicroShell();
+  attachInterrupt(digitalPinToInterrupt(INT1_PIN_THS), thresholdAccelGyro_isr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(INT2_PIN_DRDY), dataRdyAccelGyro_isr, FALLING);
+  //attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
+  //attachInterrupt(INT2_PIN_DRDY, dataRdyAccelGyro_isr, FALLING);
+
   IsConnect = false;
   DoSend = false;
-  TestValue = 0;
-  //highFrequencySampling.begin(20, highFrequencySampling_callback);
-  //highFrequencySampling.start();
-  //lowFrequencyTransmitting.begin(20, lowFrequencyTransmitting_callback);
-  //lowFrequencyTransmitting.start();
-
-  Scheduler.startLoop(lowFrequencyTransmitting_callback);
-  Scheduler.startLoop(highFrequencySampling_callback);
 }
+
+void thresholdAccelGyro_isr()
+{
+  thresholdAccelGyro_flag = true;
+}
+
+void dataRdyAccelGyro_isr()
+{
+  dataRdyAccelGyro_flag = true;
+}
+
+void dataRdyAccelGyro_callback()
+{
+  if (digitalRead(INT2_PIN_DRDY) == LOW)
+  {
+    dataRdyAccelGyro_flag = false;
+    Serial.println("dataRdyAccelGyro_flag=true");
+    if (imu.accelAvailable())
+      imu.readAccel();
+    if (imu.gyroAvailable())
+      imu.readGyro();
+  }
+  delay(2);
+  waitForEvent();
+}
+
+void thresholdAccelGyro_callback()
+{
+  if (thresholdAccelGyro_flag)
+  {
+    thresholdAccelGyro_flag = false;
+    Serial.println("it's me!");
+    cb.sendCapturedRecords();
+  }
+  delay(2);
+  waitForEvent();
+}
+
+
 
 void startAdv(void)
 {
@@ -396,10 +517,10 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
    More information http://www.freertos.org/RTOS-software-timer.html
 */
-void blink_timer_callback(TimerHandle_t xTimerID)
+void blink_timer_callback()
 {
-  (void) xTimerID;
   digitalToggle(LED_RED);
+  delay(1000);
 }
 
 /**
@@ -421,5 +542,6 @@ void blink_timer_callback(TimerHandle_t xTimerID)
 
 void rtos_idle_callback(void)
 {
+
 }
 
