@@ -1,3 +1,5 @@
+#include <Adafruit_LSM9DS1.h>
+#include <Adafruit_Sensor.h>  // not used in this demo but required!
 #include <MicroShell.h>
 #include <bluefruit.h>
 // BLE Service
@@ -6,27 +8,34 @@ BLEUart bleuart;
 BLEBas  blebas;
 
 
-#define BUFFERSIZE 30
+#define BUFFERSIZE 2
+
+Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1();  // i2c sensor
+
+
 typedef struct {
-  unsigned short int x;
-  unsigned short int y;
-  unsigned short int z;
+  float x;
+  float y;
+  float z;
 } vector_t;
 
 typedef struct {
-  vector_t a;
-  vector_t g;
-  vector_t m;
+  sensors_event_t a;
+  sensors_event_t g;
+  sensors_event_t m;
   unsigned short int t;
   unsigned short int ts;
 } record_t;
+
+
 
 class CyclicBuffer
 {
   public:
     record_t record[BUFFERSIZE];
     void clearRecords();
-    void setRecord(int ax, int ay, int az, int gx, int gy, int gz, int mx, int my, int mz, int t, int ts);
+    //void setRecord(int ax, int ay, int az, int gx, int gy, int gz, int mx, int my, int mz, int t, int ts);
+    record_t* CyclicBuffer::getRecord();
     void transmitRecords();
     char  getHead();
   private:
@@ -39,7 +48,7 @@ void CyclicBuffer::clearRecords()
   head = BUFFERSIZE - 1;
   for (char  i = 0; i < BUFFERSIZE; i++)
   {
-    record[i].a.x = 0xcafe;
+    record[i].a.acceleration.x = 0xcafe;
   }
 }
 
@@ -48,6 +57,15 @@ char CyclicBuffer::getHead()
   return head;
 }
 
+record_t* CyclicBuffer::getRecord()
+{
+  head++;
+  head %= BUFFERSIZE;
+  record[(head + 1) % BUFFERSIZE].a.acceleration.x = 0xcafe;
+  return &record[head];
+}
+
+#if 0
 void CyclicBuffer::setRecord(int ax, int ay, int az, int gx, int gy, int gz, int mx, int my, int mz, int t, int ts)
 {
   head++;
@@ -65,6 +83,8 @@ void CyclicBuffer::setRecord(int ax, int ay, int az, int gx, int gy, int gz, int
   record[head].ts = ts;
   record[(head + 1) % BUFFERSIZE].a.x = 0xcafe;
 }
+#endif
+
 
 void CyclicBuffer::transmitRecords()
 {
@@ -75,24 +95,24 @@ void CyclicBuffer::transmitRecords()
     i++;
     i %= BUFFERSIZE;
   }
-  while (record[i].a.x == 0xcafe);
-  while (record[i].a.x != 0xcafe);
+  while (record[i].a.acceleration.x == 0xcafe);
+  while (record[i].a.acceleration.x != 0xcafe);
   {
-    sprintf(b, "{\"a:\"[%x,%x,%x],\n", record[i].a.x, record[i].a.y, record[i].a.z);
+    sprintf(b, "{\"a:\"[%5.2f,%5.2f,%5.2f],\n", record[head].a.acceleration.x, record[head].a.acceleration.y, record[head].a.acceleration.z);
     bleuart.write( b, strlen(b) );
-    Serial.print(b);
-    sprintf(b, "\"g\":[%x,%x,%x],\n", record[i].g.x, record[i].g.y, record[i].g.z);
+    delay(2);
+    //Serial.print(b);
+    sprintf(b, "\"g\":[%5.2f,%5.2f,%5.2f],\n", record[head].g.gyro.x, record[head].g.gyro.y, record[head].g.gyro.z);
     bleuart.write( b, strlen(b) );
-    Serial.print(b);
-    sprintf(b, "\"m\":[%x,%x,%x],\n", record[i].m.x, record[i].m.y, record[i].m.z);
+    delay(2);
+    //Serial.print(b);
+    sprintf(b, "\"m\":[%5.2f,%5.2f,%5.2f],\n", record[head].m.magnetic.x, record[head].m.magnetic.y, record[head].m.magnetic.z);
     bleuart.write( b, strlen(b) );
-    Serial.print(b);
-    sprintf(b, "\"t\":%x,\n", record[i].t);
+    delay(2);
+    //Serial.print(b);
+    sprintf(b, "\"t\":%d,\n", record[head].a.timestamp);
     bleuart.write( b, strlen(b) );
-    Serial.print(b);
-    sprintf(b, "\"ts\":%x}\n", record[i].ts);
-    bleuart.write( b, strlen(b) );
-    Serial.print(b);
+    delay(2);
     i++;
     i %= BUFFERSIZE;
   }
@@ -123,6 +143,8 @@ unsigned short int TestValue;
 
 // Software Timer for blinking RED LED
 SoftwareTimer blinkTimer;
+SoftwareTimer highFrequencySampling;
+SoftwareTimer lowFrequencyTransmitting;
 
 char* TemplateFunc(int a, char* b)
 {
@@ -166,54 +188,103 @@ char* ResetTimestamp()
   return "ok";
 }
 
-void HighFrequencySampling(void)
+void highFrequencySampling_callback(/*TimerHandle_t xTimerID*/)
 {
-  // must be implemented reading from imu component
+  // Don't call any other FreeRTOS blocking API()
+  // Perform background task(s) here
+   // must be implemented reading from imu component
   // following only for testing purpose
-  cb.setRecord(TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++, TestValue++);
-  delay(2);              // wait for 2 ms
+  record_t* record;
+  record = cb.getRecord();
+  lsm.read();
+  sensors_event_t temp;
+  //sensors_event_t a, m, g, temp;
+  lsm.getEvent(&(record->a), &(record->m), &(record->g), &temp);
+  Serial.print("Accel X: "); Serial.print(record->a.acceleration.x); Serial.print(" m/s^2");
+  Serial.print("\tY: "); Serial.print(record->a.acceleration.y);     Serial.print(" m/s^2 ");
+  Serial.print("\tZ: "); Serial.print(record->a.acceleration.z);     Serial.println(" m/s^2 ");
+
+  //cb.setRecord(a.acceleration.x, a.acceleration.y, a.acceleration.z, m.magnetic.x, m.magnetic.y, m.magnetic.z, g.gyro.x, g.gyro.y, g.gyro.z, 0, 0);
+  delay(2000);              // wait for 2 ms 
+
 }
 
 
-void LowFrequencyTransmission(void)
+void lowFrequencyTransmitting_callback(/*TimerHandle_t xTimerID*/)
 {
   char b[100];
-  int head=cb.getHead();
+  int head = cb.getHead();
   if (IsConnect == true && DoSend == true)
   {
-    sprintf(b, "{\"a:\"[%04x,%04x,%04x],\n", cb.record[head].a.x, cb.record[head].a.y, cb.record[head].a.z);
+    
+    sprintf(b, "{\"a:\"[%5.2f,%5.2f,%5.2f],\n", cb.record[head].a.acceleration.x, cb.record[head].a.acceleration.y, cb.record[head].a.acceleration.z);
     bleuart.write( b, strlen(b) );
+    delay(2);
     //Serial.print(b);
-    sprintf(b, "\"g\":[%04x,%04x,%04x],\n", cb.record[head].g.x, cb.record[head].g.y, cb.record[head].g.z);
+    sprintf(b, "\"g\":[%5.2f,%5.2f,%5.2f],\n", cb.record[head].g.gyro.x, cb.record[head].g.gyro.y, cb.record[head].g.gyro.z);
     bleuart.write( b, strlen(b) );
+    delay(2);
     //Serial.print(b);
-    sprintf(b, "\"m\":[%04x,%04x,%04x],\n", cb.record[head].m.x, cb.record[head].m.y, cb.record[head].m.z);
+    sprintf(b, "\"m\":[%5.2f,%5.2f,%5.2f],\n", cb.record[head].m.magnetic.x, cb.record[head].m.magnetic.y, cb.record[head].m.magnetic.z);
     bleuart.write( b, strlen(b) );
+    delay(2);
     //Serial.print(b);
-    sprintf(b, "\"t\":%04x,\n", cb.record[head].t);
+    sprintf(b, "\"t\":%d,\n", cb.record[head].a.timestamp);
     bleuart.write( b, strlen(b) );
+    delay(2);
     //Serial.print(b);
-    sprintf(b, "\"ts\":%04x}\n", cb.record[head].ts);
-    bleuart.write( b, strlen(b) );
+    //sprintf(b, "\"ts\":%04x}\n", cb.record[head].ts);
+    //bleuart.write( b, strlen(b) );
+    
     //Serial.print(b);
   }
-  delay(20);              // wait for 20 ms
+  delay(2000);              // wait for 20 ms
 }
 
 
 void setup()
 {
   Serial.begin(115200);
+  delay(100);
   Serial.println("TopView Easy Stroke");
   Serial.println("---------------------\n");
 
   // Initialize blinkTimer for 1000 ms and start it
   blinkTimer.begin(1000, blink_timer_callback);
   blinkTimer.start();
+#if 1
+  if (!lsm.begin())
+  {
+    /* There was a problem detecting the LSM9DS1 ... check your connections */
+    Serial.println("Error: No LSM9DS1 detected. Check wiring");
+    delay(200);
+    while (1);
+  }
+#endif
+  Serial.println("LSM9DS1 9DOF connected.");
+  delay(200);
+  // 1.) Set the accelerometer range
+  lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);
+  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_4G);
+  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_8G);
+  //lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_16G);
 
+  // 2.) Set the magnetometer sensitivity
+  lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);
+  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_8GAUSS);
+  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_12GAUSS);
+  //lsm.setupMag(lsm.LSM9DS1_MAGGAIN_16GAUSS);
+
+  // 3.) Setup the gyroscope
+  lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);
+  //lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_500DPS);
+  //lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_2000DPS);
   // Setup the BLE LED to be enabled on CONNECT
   // Note: This is actually the default behaviour, but provided
   // here in case you want to control this LED manually via PIN 19
+  
+  
+  
   Bluefruit.autoConnLed(true);
 
   // Config the peripheral connection with maximum bandwidth
@@ -249,9 +320,14 @@ void setup()
   InitMicroShell();
   IsConnect = false;
   DoSend = false;
-  TestValue=0;
-  Scheduler.startLoop(LowFrequencyTransmission);
-  Scheduler.startLoop(HighFrequencySampling);
+  TestValue = 0;
+  //highFrequencySampling.begin(20, highFrequencySampling_callback);
+  //highFrequencySampling.start();
+  //lowFrequencyTransmitting.begin(20, lowFrequencyTransmitting_callback);
+  //lowFrequencyTransmitting.start();
+
+  Scheduler.startLoop(lowFrequencyTransmitting_callback);
+  Scheduler.startLoop(highFrequencySampling_callback);
 }
 
 void startAdv(void)
@@ -345,7 +421,5 @@ void blink_timer_callback(TimerHandle_t xTimerID)
 
 void rtos_idle_callback(void)
 {
-  // Don't call any other FreeRTOS blocking API()
-  // Perform background task(s) here
 }
 
