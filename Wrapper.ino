@@ -6,6 +6,8 @@ char* Battery();
 char* Send();
 char* StopSend();
 char* SendFastBuffer();
+char* SendFastBuffer();
+char* ResetTimestamp();
 
 // Put here function wrapper
 void TemplateFunc_wrapper(int argc, char **argv)

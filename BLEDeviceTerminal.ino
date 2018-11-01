@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SparkFunLSM9DS1.h>
+#define TOPVALUE 32768
 
 volatile bool thresholdAccelGyro_flag = false;
 volatile bool dataRdyAccelGyro_flag = false;
@@ -40,7 +41,7 @@ typedef struct {
   vector_t g;
   vector_t m;
   uint16_t t;
-  uint16_t ts;
+  unsigned long int ts;
 } record_t;
 
 void bleout( char* b, int len, int blocklen )
@@ -53,55 +54,83 @@ void bleout( char* b, int len, int blocklen )
   bleuart.write(&b[block * blocklen], len % blocklen);
 }
 
+class TimestampManager
+{
+  public:
+    void begin();
+    void inc();
+    unsigned long int get();
+  private:
+    unsigned long int Timestamp;
+};
+void TimestampManager::begin()
+{
+  Timestamp = 0;
+}
+void TimestampManager::inc()
+{
+  Timestamp++;
+}
+unsigned long int TimestampManager::get()
+{
+  return Timestamp;
+}
+
+
+
+
+
 
 class CyclicBuffer
 {
   public:
-    record_t record[BUFFERSIZE];
     void begin();
     record_t* getRecord();
     void sendCapturedRecords();
-    char  getHead();
   private:
-    char head;   // index for the top of the buffer
+    record_t record[BUFFERSIZE];
+    int head;   // index for the top of the buffer
+    int n;
+    int getHead();
 };
 
 
 void CyclicBuffer::begin()
 {
-  head = BUFFERSIZE - 1;
-  for (char  i = 0; i < BUFFERSIZE; i++)
-  {
-    record[i].a.x = 32768;
-  }
+  head = 0;
+  n = 0;
 }
 
-char CyclicBuffer::getHead()
+int CyclicBuffer::getHead()
 {
-  return head;
+  if (n == 0) return BUFFERSIZE;
+  else return (head + 1) % n;
 }
 
 record_t* CyclicBuffer::getRecord()
 {
+  record_t* record_ptr;
+  n++;
+  if (n > BUFFERSIZE) n = BUFFERSIZE;
+  if (n == 1)
+  {
+    record_ptr = &record[0];
+    n = 1;
+  }
+  else {
+    record_ptr = &record[head];
+  }
   head++;
   head %= BUFFERSIZE;
-  record[(head + 1) % BUFFERSIZE].a.x = 1792;
-  return &record[head];
+  return record_ptr;
 }
 
 void CyclicBuffer::sendCapturedRecords()
 {
-  char i = head;
-  char j = 0;
   char b[100];
-  do
-  {
-    if ((j++) >= BUFFERSIZE) return;
-    i++;
-    i %= BUFFERSIZE;
-  }
-  while (record[i].a.x == 32768);
-  while (record[i].a.x != 32768)
+  if (n == 0) return;
+  int i = getHead();
+  for (int j = 0; j < n; j++)
   {
     sprintf(b, "{\"a\":[%05d,%05d,%05d],\n", record[i].a.x, record[i].a.y, record[i].a.z);
     bleout( b, strlen(b), 15 );
@@ -109,7 +138,7 @@ void CyclicBuffer::sendCapturedRecords()
     bleout( b, strlen(b), 15);
     sprintf(b, "\"m\":[%05d,%05d,%05d],\n", record[i].m.x, record[i].m.y, record[i].m.z);
     bleout( b, strlen(b), 15);
-    sprintf(b, "\"t\":%d}\n", record[i].ts);
+    sprintf(b, "\"t\":%lu}\n", record[i].ts);
     bleout( b, strlen(b), 15);
     i++;
     i %= BUFFERSIZE;
@@ -117,6 +146,7 @@ void CyclicBuffer::sendCapturedRecords()
 }
 
 CyclicBuffer cb;
+TimestampManager ts;
 
 
 
@@ -139,8 +169,8 @@ bool IsConnect, DoSend;
 // Software Timer for blinking RED LED
 SoftwareTimer blinkTimer;
 
-// Software Timer for IMU data sampling
-SoftwareTimer imuDataSampling;
+// Software Timer for Timestamp
+SoftwareTimer tsTimer;
 
 char* TemplateFunc(int a, char* b)
 {
@@ -179,7 +209,8 @@ char* Battery()
 char* ResetTimestamp()
 {
   /* to be implemented */
-  char buf[] = "ok";
+  ts.begin();
+  char buf[] = "Timestamp cleared.\n";
   bleuart.write( buf, strlen(buf) );
   return "ok";
 }
@@ -197,44 +228,8 @@ void imuDataSampling_callback()
   record->m.x = imu.mx;
   record->m.y = imu.my;
   record->m.z = imu.mz;
-#if 0
-  Serial.println();
-  Serial.print("A: ");
-  Serial.print(imu.ax); Serial.print(", ");
-  Serial.print(imu.ay); Serial.print(", ");
-  Serial.println(imu.az);
-  Serial.print("G: ");
-  Serial.print(imu.gx); Serial.print(", ");
-  Serial.print(imu.gy); Serial.print(", ");
-  Serial.println(imu.gz);
-  Serial.print("M: ");
-  Serial.print(imu.mx); Serial.print(", ");
-  Serial.print(imu.my); Serial.print(", ");
-  Serial.println(imu.mz);
-#endif
-  // Don't call any other FreeRTOS blocking API()
-  // Perform background task(s) here
-  // must be implemented reading from imu component
-  // following only for testing purpose
+  record->ts = ts.get();
   delay(20);
-}
-
-
-void triggerEventManager_callback()
-{
-  char b[100];
-  int head = cb.getHead();
-  if (IsConnect == true && DoSend == true)
-  {
-    sprintf(b, "{\"a:\"[%05d,%05d,%05d],\n", cb.record[head].a.x, cb.record[head].a.y, cb.record[head].a.z);
-    bleuart.write( b, strlen(b) );
-    sprintf(b, "\"g\":[%05d,%05d,%05d],\n", cb.record[head].g.x, cb.record[head].g.y, cb.record[head].g.z);
-    bleuart.write( b, strlen(b) );
-    sprintf(b, "\"m\":[%05d,%05d,%05d],\n", cb.record[head].m.x, cb.record[head].m.y, cb.record[head].m.z);
-    bleuart.write( b, strlen(b) );
-    sprintf(b, "\"t\":%05d,\n", cb.record[head].ts);
-    bleuart.write( b, strlen(b) );
-  }
 }
 
 // configureIMU sets up our LSM9DS1 interface, sensor scales
@@ -250,7 +245,7 @@ uint16_t configureIMU()
   // gyro and accelerometer interrupts (INT1 and INT2).
   // false = no latching
   imu.settings.gyro.latchInterrupt = false
-  ;
+                                     ;
 
   // Set gyroscope scale to +/-245 dps:
   imu.settings.gyro.scale = 245;
@@ -344,6 +339,7 @@ void setup()
   Serial.println("TopView Easy Stroke");
   Serial.println("---------------------\n");
   cb.begin();
+  ts.begin();
   // Set up our Arduino pins connected to interrupts.
   // We configured all of these interrupts in the LSM9DS1
   // to be active-low.
@@ -407,13 +403,15 @@ void setup()
   InitMicroShell();
 
   // Initialize blinkTimer for 1000 ms and start it
-  //blinkTimer.begin(1000, blink_timer_callback);
-  //blinkTimer.start();
-  Scheduler.startLoop(blink_timer_callback);
+  blinkTimer.begin(1000, blinkTimer_callback);
+  blinkTimer.start();
+  tsTimer.begin(1, tsTimer_callback);
+  tsTimer.start();
+  //Scheduler.startLoop(blink_timer_callback);
   Scheduler.startLoop(imuDataSampling_callback);
   Scheduler.startLoop(dataRdyAccelGyro_callback);
   Scheduler.startLoop(thresholdAccelGyro_callback);
-  
+
   attachInterrupt(digitalPinToInterrupt(INT1_PIN_THS), thresholdAccelGyro_isr, FALLING);
   attachInterrupt(digitalPinToInterrupt(INT2_PIN_DRDY), dataRdyAccelGyro_isr, LOW);
   //attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
@@ -436,16 +434,14 @@ void dataRdyAccelGyro_isr()
 void dataRdyAccelGyro_callback()
 {
   if (digitalRead(INT2_PIN_DRDY) == LOW)
-  //if (digitalRead(dataRdyAccelGyro_flag) == true)
+    //if (digitalRead(dataRdyAccelGyro_flag) == true)
   {
     dataRdyAccelGyro_flag = false;
-    Serial.println("dataRdyAccelGyro_flag=true");
     if (imu.accelAvailable())
       imu.readAccel();
     if (imu.gyroAvailable())
       imu.readGyro();
-  } //else Serial.println("dataRdyAccelGyro_flag=false");
-
+  };
   delay(2);
   waitForEvent();
 }
@@ -455,7 +451,6 @@ void thresholdAccelGyro_callback()
   if (thresholdAccelGyro_flag)
   {
     thresholdAccelGyro_flag = false;
-    Serial.println("it's me!");
     cb.sendCapturedRecords();
   }
   delay(2);
@@ -530,11 +525,16 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
    More information http://www.freertos.org/RTOS-software-timer.html
 */
-void blink_timer_callback()
+void blinkTimer_callback()
 {
   digitalToggle(LED_RED);
-  delay(1000);
 }
+
+void tsTimer_callback()
+{
+  ts.inc();
+}
+
 
 /**
    RTOS Idle callback is automatically invoked by FreeRTOS
