@@ -4,6 +4,8 @@
 #include <SPI.h>
 #include <SparkFunLSM9DS1.h>
 #define TOPVALUE 32768
+#define GREEN true
+#define RED false
 
 volatile bool thresholdAccelGyro_flag = false;
 volatile bool dataRdyAccelGyro_flag = false;
@@ -84,10 +86,13 @@ unsigned long int TimestampManager::get()
 class CyclicBuffer
 {
   public:
+    bool getSemaphore();
+    void setSemaphore(bool value);
     void begin();
     record_t* getRecord();
     void sendCapturedRecords();
   private:
+    bool Semaphore;
     record_t record[BUFFERSIZE];
     int head;   // index for the top of the buffer
     int n;
@@ -99,6 +104,17 @@ void CyclicBuffer::begin()
 {
   head = 0;
   n = 0;
+  Semaphore = GREEN;
+}
+
+void CyclicBuffer::setSemaphore(bool value)
+{
+  Semaphore = value;
+}
+
+bool CyclicBuffer::getSemaphore()
+{
+  return Semaphore;
 }
 
 int CyclicBuffer::getHead()
@@ -129,6 +145,7 @@ void CyclicBuffer::sendCapturedRecords()
 {
   char b[100];
   if (n == 0) return;
+  setSemaphore(RED);
   int i = getHead();
   for (int j = 0; j < n; j++)
   {
@@ -143,6 +160,7 @@ void CyclicBuffer::sendCapturedRecords()
     i++;
     i %= BUFFERSIZE;
   }
+  setSemaphore(GREEN);
 }
 
 CyclicBuffer cb;
@@ -218,6 +236,7 @@ char* ResetTimestamp()
 void imuDataSampling_callback()
 {
   record_t* record;
+  if(cb.getSemaphore() == RED) return;
   record = cb.getRecord();
   record->a.x = imu.ax;
   record->a.y = imu.ay;
