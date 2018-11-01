@@ -3,7 +3,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SparkFunLSM9DS1.h>
-#define TOPVALUE 32768
+
 #define GREEN true
 #define RED false
 
@@ -91,12 +91,15 @@ class CyclicBuffer
     void begin();
     record_t* getRecord();
     void sendCapturedRecords();
+    void trigger(int samples);
   private:
     bool Semaphore;
-    record_t record[BUFFERSIZE];
+    record_t record[BUFFERSIZE+10];
     int head;   // index for the top of the buffer
     int n;
     int getHead();
+    bool trigger_flag;
+    int trigger_samples;
 };
 
 
@@ -105,6 +108,7 @@ void CyclicBuffer::begin()
   head = 0;
   n = 0;
   Semaphore = GREEN;
+  trigger_flag = RED;
 }
 
 void CyclicBuffer::setSemaphore(bool value)
@@ -116,6 +120,27 @@ bool CyclicBuffer::getSemaphore()
 {
   return Semaphore;
 }
+
+void CyclicBuffer::trigger(int samples)
+{
+  if (samples != 0)
+  {
+    trigger_flag = GREEN;
+    trigger_samples = samples;
+  }
+  else
+  {
+    if(trigger_flag == GREEN)
+    {
+      if(--trigger_samples <= 0)
+      {
+        trigger_flag = RED;
+        sendCapturedRecords();
+      }
+    }    
+  }
+}
+
 
 int CyclicBuffer::getHead()
 {
@@ -236,7 +261,7 @@ char* ResetTimestamp()
 void imuDataSampling_callback()
 {
   record_t* record;
-  if(cb.getSemaphore() == RED) return;
+  if (cb.getSemaphore() == RED) return;
   record = cb.getRecord();
   record->a.x = imu.ax;
   record->a.y = imu.ay;
@@ -248,6 +273,7 @@ void imuDataSampling_callback()
   record->m.y = imu.my;
   record->m.z = imu.mz;
   record->ts = ts.get();
+  cb.trigger(0);
   delay(20);
 }
 
@@ -470,7 +496,8 @@ void thresholdAccelGyro_callback()
   if (thresholdAccelGyro_flag)
   {
     thresholdAccelGyro_flag = false;
-    cb.sendCapturedRecords();
+    cb.trigger(BUFFERSIZE);
+    //cb.sendCapturedRecords();
   }
   delay(2);
   waitForEvent();
