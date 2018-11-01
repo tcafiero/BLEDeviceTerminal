@@ -14,10 +14,10 @@ LSM9DS1 imu; // Create an LSM9DS1 object to use from here on.
 // Interrupt Pin Definitions //
 ///////////////////////////////
 // These can be swapped to any available digital pin:
-const int INT1_PIN_THS = (14); //3 INT1 pin to D3 - will be attached to gyro
-const int INT2_PIN_DRDY = (15); //4 INT2 pin to D4 - attached to accel
-const int INTM_PIN_THS = (16);  //5 INTM_PIN_THS pin to D5
-const int RDYM_PIN = (19);  // RDY pin to D6
+const int INT1_PIN_THS = ARDUINO_3_PIN; //3 INT1 pin to D3 - will be attached to gyro
+const int INT2_PIN_DRDY = ARDUINO_4_PIN; //4 INT2 pin to D4 - attached to accel
+const int INTM_PIN_THS = ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5
+const int RDYM_PIN = ARDUINO_8_PIN;  // RDY pin to D8
 
 
 
@@ -72,7 +72,7 @@ void CyclicBuffer::begin()
   head = BUFFERSIZE - 1;
   for (char  i = 0; i < BUFFERSIZE; i++)
   {
-    record[i].a.x = 1792;
+    record[i].a.x = 32768;
   }
 }
 
@@ -100,11 +100,10 @@ void CyclicBuffer::sendCapturedRecords()
     i++;
     i %= BUFFERSIZE;
   }
-  while (record[i].a.x == 1792);
-  while (record[i].a.x != 1792)
+  while (record[i].a.x == 32768);
+  while (record[i].a.x != 32768)
   {
-    Serial.println("2");
-    sprintf(b, "{\"a:\"[%05d,%05d,%05d],\n", record[i].a.x, record[i].a.y, record[i].a.z);
+    sprintf(b, "{\"a\":[%05d,%05d,%05d],\n", record[i].a.x, record[i].a.y, record[i].a.z);
     bleout( b, strlen(b), 15 );
     sprintf(b, "\"g\":[%05d,%05d,%05d],\n", record[i].g.x, record[i].g.y, record[i].g.z);
     bleout( b, strlen(b), 15);
@@ -189,6 +188,15 @@ void imuDataSampling_callback()
 {
   record_t* record;
   record = cb.getRecord();
+  record->a.x = imu.ax;
+  record->a.y = imu.ay;
+  record->a.z = imu.az;
+  record->g.x = imu.gx;
+  record->g.y = imu.gy;
+  record->g.z = imu.gz;
+  record->m.x = imu.mx;
+  record->m.y = imu.my;
+  record->m.z = imu.mz;
 #if 0
   Serial.println();
   Serial.print("A: ");
@@ -241,7 +249,8 @@ uint16_t configureIMU()
   // gyro.latchInterrupt controls the latching of the
   // gyro and accelerometer interrupts (INT1 and INT2).
   // false = no latching
-  imu.settings.gyro.latchInterrupt = false;
+  imu.settings.gyro.latchInterrupt = false
+  ;
 
   // Set gyroscope scale to +/-245 dps:
   imu.settings.gyro.scale = 245;
@@ -362,13 +371,6 @@ void setup()
   // After turning the IMU on, configure the interrupts:
   configureLSM9DS1Interrupts();
 
-  // Initialize blinkTimer for 1000 ms and start it
-  //blinkTimer.begin(1000, blink_timer_callback);
-  //blinkTimer.start();
-  Scheduler.startLoop(blink_timer_callback);
-  Scheduler.startLoop(imuDataSampling_callback);
-  Scheduler.startLoop(dataRdyAccelGyro_callback);
-  Scheduler.startLoop(thresholdAccelGyro_callback);
 
   Bluefruit.autoConnLed(true);
 
@@ -403,8 +405,17 @@ void setup()
   Serial.println("Please use a BLE Terminal applet to connect in UART mode");
   Serial.println("Once connected, enter commands(s) that you wish to send");
   InitMicroShell();
+
+  // Initialize blinkTimer for 1000 ms and start it
+  //blinkTimer.begin(1000, blink_timer_callback);
+  //blinkTimer.start();
+  Scheduler.startLoop(blink_timer_callback);
+  Scheduler.startLoop(imuDataSampling_callback);
+  Scheduler.startLoop(dataRdyAccelGyro_callback);
+  Scheduler.startLoop(thresholdAccelGyro_callback);
+  
   attachInterrupt(digitalPinToInterrupt(INT1_PIN_THS), thresholdAccelGyro_isr, FALLING);
-  attachInterrupt(digitalPinToInterrupt(INT2_PIN_DRDY), dataRdyAccelGyro_isr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(INT2_PIN_DRDY), dataRdyAccelGyro_isr, LOW);
   //attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
   //attachInterrupt(INT2_PIN_DRDY, dataRdyAccelGyro_isr, FALLING);
 
@@ -425,6 +436,7 @@ void dataRdyAccelGyro_isr()
 void dataRdyAccelGyro_callback()
 {
   if (digitalRead(INT2_PIN_DRDY) == LOW)
+  //if (digitalRead(dataRdyAccelGyro_flag) == true)
   {
     dataRdyAccelGyro_flag = false;
     Serial.println("dataRdyAccelGyro_flag=true");
@@ -432,7 +444,8 @@ void dataRdyAccelGyro_callback()
       imu.readAccel();
     if (imu.gyroAvailable())
       imu.readGyro();
-  }
+  } //else Serial.println("dataRdyAccelGyro_flag=false");
+
   delay(2);
   waitForEvent();
 }
