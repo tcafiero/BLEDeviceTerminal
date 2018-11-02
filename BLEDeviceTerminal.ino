@@ -17,10 +17,10 @@ LSM9DS1 imu; // Create an LSM9DS1 object to use from here on.
 // Interrupt Pin Definitions //
 ///////////////////////////////
 // These can be swapped to any available digital pin:
-const int INT1_PIN_THS = ARDUINO_3_PIN; //3 INT1 pin to D3 - will be attached to gyro
-const int INT2_PIN_DRDY = ARDUINO_4_PIN; //4 INT2 pin to D4 - attached to accel
+const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to gyro
+const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel
 const int INTM_PIN_THS = ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5
-const int RDYM_PIN = ARDUINO_8_PIN;  // RDY pin to D8
+const int RDYM_PIN = ARDUINO_4_PIN;  // RDY pin to D8
 
 
 
@@ -487,6 +487,13 @@ void dataRdyAccelGyro_callback()
     if (imu.gyroAvailable())
       imu.readGyro();
   };
+  if (digitalRead(RDYM_PIN) == HIGH)
+  {
+    if (imu.magAvailable())
+    {
+      imu.readMag();
+    }
+  }  
   delay(2);
   waitForEvent();
 }
