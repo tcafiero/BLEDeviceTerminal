@@ -6,9 +6,10 @@
 
 #define GREEN true
 #define RED false
+#define PRINT_CALCULATED
+#define SAMPLING_PERIOD 5 // ms
 
 volatile bool thresholdAccelGyro_flag = false;
-volatile bool dataRdyAccelGyro_flag = false;
 
 
 LSM9DS1 imu; // Create an LSM9DS1 object to use from here on.
@@ -21,6 +22,7 @@ const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to
 const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel
 const int INTM_PIN_THS = ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5
 const int RDYM_PIN = ARDUINO_4_PIN;  // RDY pin to D8
+#define DECLINATION +3.39 // Declination (degrees) in Naples, Italy.
 
 
 
@@ -94,7 +96,7 @@ class CyclicBuffer
     void trigger(int samples);
   private:
     bool Semaphore;
-    record_t record[BUFFERSIZE+10];
+    record_t record[BUFFERSIZE + 10];
     int head;   // index for the top of the buffer
     int n;
     int getHead();
@@ -130,14 +132,14 @@ void CyclicBuffer::trigger(int samples)
   }
   else
   {
-    if(trigger_flag == GREEN)
+    if (trigger_flag == GREEN)
     {
-      if(--trigger_samples <= 0)
+      if (--trigger_samples <= 0)
       {
         trigger_flag = RED;
         sendCapturedRecords();
       }
-    }    
+    }
   }
 }
 
@@ -172,13 +174,28 @@ void CyclicBuffer::sendCapturedRecords()
   if (n == 0) return;
   setSemaphore(RED);
   int i = getHead();
-  for (int j = 0; j < n; j++)
+  for (int j = 0; j < n-1; j++)
   {
+    #ifdef PRINT_RAW
     sprintf(b, "{\"a\":[%05d,%05d,%05d],\n", record[i].a.x, record[i].a.y, record[i].a.z);
+    #elif defined PRINT_CALCULATED
+    // g
+    sprintf(b, "{\"a\":[%6.2f,%6.2f,%6.2f],\n", imu.calcAccel(record[i].a.x), imu.calcAccel(record[i].a.y), imu.calcAccel(record[i].a.z));
+    #endif
     bleout( b, strlen(b), 15 );
+    #ifdef PRINT_RAW
     sprintf(b, "\"g\":[%05d,%05d,%05d],\n", record[i].g.x, record[i].g.y, record[i].g.z);
+    #elif defined PRINT_CALCULATED
+    // deg/s
+    sprintf(b, "{\"g\":[%6.2f,%6.2f,%6.2f],\n", imu.calcGyro(record[i].g.x), imu.calcGyro(record[i].g.y), imu.calcGyro(record[i].g.z));
+    #endif
     bleout( b, strlen(b), 15);
+    #ifdef PRINT_RAW
     sprintf(b, "\"m\":[%05d,%05d,%05d],\n", record[i].m.x, record[i].m.y, record[i].m.z);
+    #elif defined PRINT_CALCULATED
+    // gauss
+    sprintf(b, "{\"m\":[%6.2f,%6.2f,%6.2f],\n", imu.calcMag(record[i].m.x), imu.calcMag(record[i].m.y), imu.calcMag(record[i].m.z));
+    #endif
     bleout( b, strlen(b), 15);
     sprintf(b, "\"t\":%lu}\n", record[i].ts);
     bleout( b, strlen(b), 15);
@@ -274,7 +291,7 @@ void imuDataSampling_callback()
   record->m.z = imu.mz;
   record->ts = ts.get();
   cb.trigger(0);
-  delay(20);
+  delay(SAMPLING_PERIOD);
 }
 
 // configureIMU sets up our LSM9DS1 interface, sensor scales
@@ -454,13 +471,11 @@ void setup()
   tsTimer.start();
   //Scheduler.startLoop(blink_timer_callback);
   Scheduler.startLoop(imuDataSampling_callback);
-  Scheduler.startLoop(dataRdyAccelGyro_callback);
+  Scheduler.startLoop(readSensors_callback);
   Scheduler.startLoop(thresholdAccelGyro_callback);
 
   attachInterrupt(digitalPinToInterrupt(INT1_PIN_THS), thresholdAccelGyro_isr, FALLING);
-  attachInterrupt(digitalPinToInterrupt(INT2_PIN_DRDY), dataRdyAccelGyro_isr, LOW);
   //attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
-  //attachInterrupt(INT2_PIN_DRDY, dataRdyAccelGyro_isr, FALLING);
 
   IsConnect = false;
   DoSend = false;
@@ -471,29 +486,29 @@ void thresholdAccelGyro_isr()
   thresholdAccelGyro_flag = true;
 }
 
-void dataRdyAccelGyro_isr()
+void readSensors_callback()
 {
-  dataRdyAccelGyro_flag = true;
-}
-
-void dataRdyAccelGyro_callback()
-{
-  if (digitalRead(INT2_PIN_DRDY) == LOW)
-    //if (digitalRead(dataRdyAccelGyro_flag) == true)
+  if ( imu.gyroAvailable() )
   {
-    dataRdyAccelGyro_flag = false;
-    if (imu.accelAvailable())
-      imu.readAccel();
-    if (imu.gyroAvailable())
-      imu.readGyro();
-  };
-  if (digitalRead(RDYM_PIN) == HIGH)
+    // To read from the gyroscope,  first call the
+    // readGyro() function. When it exits, it'll update the
+    // gx, gy, and gz variables with the most current data.
+    imu.readGyro();
+  }
+  if ( imu.accelAvailable() )
   {
-    if (imu.magAvailable())
-    {
-      imu.readMag();
-    }
-  }  
+    // To read from the accelerometer, first call the
+    // readAccel() function. When it exits, it'll update the
+    // ax, ay, and az variables with the most current data.
+    imu.readAccel();
+  }
+  if ( imu.magAvailable() )
+  {
+    // To read from the magnetometer, first call the
+    // readMag() function. When it exits, it'll update the
+    // mx, my, and mz variables with the most current data.
+    imu.readMag();
+  }
   delay(2);
   waitForEvent();
 }
