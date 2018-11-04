@@ -1,11 +1,6 @@
 /*********************************************************************
  This is an example for our nRF52 based Bluefruit LE modules
 
- Pick one up today in the adafruit shop!
-
- Adafruit invests time and resources providing this open source code,
- please support Adafruit and open-source hardware by purchasing
- products from Adafruit!
 
  MIT license, check LICENSE for more information
  All text above, and the splash screen below must be included in
@@ -25,14 +20,14 @@ void setup()
 {
   Serial.begin(115200);
 
-  Serial.println("Bluefruit52 Central BLEUART Example");
+  Serial.println("IoThingsWare Central BLEUART Example");
   Serial.println("-----------------------------------\n");
   
   // Initialize Bluefruit with maximum connections as Peripheral = 0, Central = 1
   // SRAM usage required by SoftDevice will increase dramatically with number of connections
   Bluefruit.begin(0, 1);
   
-  Bluefruit.setName("Bluefruit52 Central");
+  Bluefruit.setName("IoThingsWare Central");
 
   // Configure DIS client
   clientDis.begin();
