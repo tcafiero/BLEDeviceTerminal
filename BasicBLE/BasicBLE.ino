@@ -223,8 +223,10 @@ void loop()
     // Call print attitude. The LSM9DS1's mag x and y
     // axes are opposite to the accelerometer, so my, mx are
     // substituted for each other.
+//    printAttitude(imu.ax, imu.ay, imu.az, 
+//                 -imu.my, -imu.mx, imu.mz);
     printAttitude(imu.ax, imu.ay, imu.az, 
-                 -imu.my, -imu.mx, imu.mz);
+                 imu.mx, imu.my, imu.mz);
     
     lastPrint = millis(); // Update lastPrint time
   }
@@ -251,8 +253,8 @@ void printAttitude(float ax, float ay, float az, float mx, float my, float mz)
     
   heading -= DECLINATION * PI / 180;
   
-  if (heading > PI) heading -= (2 * PI);
-  else if (heading < -PI) heading += (2 * PI);
+  //if (heading > PI) heading -= (2 * PI);
+  //else if (heading < -PI) heading += (2 * PI);
   
   // Convert everything from radians to degrees:
   //heading *= 180.0 / PI;

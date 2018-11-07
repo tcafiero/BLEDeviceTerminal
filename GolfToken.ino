@@ -18,9 +18,9 @@ LSM9DS1 imu; // Create an LSM9DS1 object to use from here on.
 // Interrupt Pin Definitions //
 ///////////////////////////////
 // These can be swapped to any available digital pin:
-const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to gyro
-const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel
-const int INTM_PIN_THS = ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5
+const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to gyro (13)
+const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel (12)
+const int INTM_PIN_THS = (14); //ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5 (14)
 const int RDYM_PIN = ARDUINO_4_PIN;  // RDY pin to D8
 #define DECLINATION +3.39 // Declination (degrees) in Naples, Italy.
 
@@ -243,6 +243,7 @@ char* TemplateFunc(int a, char* b)
 char* Send()
 {
   DoSend = true;
+  thresholdAccelGyro_flag = true;
   return "ok";
 }
 
