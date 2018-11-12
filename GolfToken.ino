@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SparkFunLSM9DS1.h>
+#include <nrf_nvic.h>
 
 #define GREEN true
 #define RED false

@@ -1,9 +1,22 @@
-//Thanks to Adrian Fernandez
+//Thanks to Adrian Fernandez //<>// //<>//
 //Communication updates by M.Furkan Bahat November 2014
 //For more information http://mfurkanbahat.blogspot.com.tr/
 
 import processing.serial.*;
 //import cc.arduino.*;
+
+
+class raw {
+  int x;
+  int y;
+  int z;
+};
+
+raw acceleration = new raw();
+raw gyroscope = new raw();
+raw magnetic = new raw();
+
+JSONObject json;
 
 int W=1400; //My Laptop's screen width 
 int H=700;  //My Laptop's screen height 
@@ -35,8 +48,8 @@ void setup()
   port = new Serial(this, my_port, 115200);
   port.bufferUntil('\n');
 
-  
-  println(Serial.list()); //Shows your connected serial ports
+
+  //println(Serial.list()); //Shows your connected serial ports
 }
 void draw() 
 { 
@@ -52,33 +65,85 @@ void draw()
   Plane(); 
   ShowAngles(); 
   Compass(); 
-  ShowAzimuth(); 
+  ShowAzimuth();
 }
 void serialEvent(Serial myPort) //Reading the datas by Processing.
 {
-try {
-  Float roll, pitch,yaw;
-  String myString = myPort.readStringUntil('\n');
-  myString = trim(myString);
+  float roll, pitch, yaw, yaw2;
+  try {
+    String myString = myPort.readStringUntil('\n');
+    println(myString);
+    JSONObject json = parseJSONObject(myString);
+    JSONArray accel = json.getJSONArray("a");
+    JSONArray gyro = json.getJSONArray("g");
+    JSONArray mag = json.getJSONArray("m");
+    acceleration.x=accel.getInt(0);
+    acceleration.y=accel.getInt(1);
+    acceleration.z=accel.getInt(2);
+    gyroscope.x=gyro.getInt(0);
+    gyroscope.y=gyro.getInt(1);
+    gyroscope.z=gyro.getInt(2);
+    magnetic.x=mag.getInt(0);
+    magnetic.y=mag.getInt(1);
+    magnetic.z=mag.getInt(2);
+    roll = atan2(acceleration.y, acceleration.z);
+    if (acceleration.y * sin(roll) + acceleration.z * cos(roll) == 0)
+      pitch = acceleration.x > 0 ? (PI / 2) : (-PI / 2);
+    else
+      pitch = (float)atan(-acceleration.x / (acceleration.y * sin(roll) + acceleration.z * cos(roll)));
+    yaw = atan2((magnetic.z * sin(roll) - magnetic.y * cos(roll)), (magnetic.x * cos(pitch) + magnetic.y * sin(pitch) * sin(roll) + magnetic.z * sin(pitch) * cos(roll)));
+    yaw2 = 180 * atan2(magnetic.x, magnetic.y)/PI;
+    println("ax: "+accel.getInt(0)+" ay: "+accel.getInt(1)+" az: "+accel.getInt(2));
+    println("gx: "+gyro.getInt(0)+" gy: "+gyro.getInt(1)+" gz: "+gyro.getInt(2));
+    println("mx: "+mag.getInt(0)+" gy: "+mag.getInt(1)+" gz: "+mag.getInt(2));
+    println("roll: "+degrees(roll)+" pitch: "+degrees(pitch)+" yaw: "+degrees(yaw)+" yaw2: "+yaw2);
+    Phi = -roll; //radians(roll); 
+    Theta = degrees(pitch); //radians(pitch); 
+    Psi = degrees(yaw); 
+
+    /*
   float sensors[] = float(split(myString, ':'));  
-  roll = sensors[0];
-  pitch = sensors[1];
-  yaw = sensors[2];
-  //print(sensors[0]);
-  Phi = roll*(-5); //radians(roll); 
-  Theta = degrees(pitch)/2; //radians(pitch); 
-  Psi = degrees(yaw); 
-  //Azimuth=degrees(yaw);
-  println("roll: " + roll + " pitch: " + pitch + " yaw: " + yaw + "\n"); //debug
+     roll = sensors[0];
+     pitch = sensors[1];
+     yaw = sensors[2];
+     //print(sensors[0]);
+     Phi = roll*(-5); //radians(roll); 
+     Theta = degrees(pitch)/2; //radians(pitch); 
+     Psi = degrees(yaw); 
+     //Azimuth=degrees(yaw);
+     println("roll: " + roll + " pitch: " + pitch + " yaw: " + yaw + "\n"); //debug
+     */
   }
   catch (Exception e) {
     println("error");
+    myPort.write("\n");
+    delay(500);
+    myPort.write("\n");
+    delay(500);
+    myPort.write("\n");
+    delay(500);
+    myPort.write("Send\n");
   }
 }
 
+void mousePressed() {
+    println("Closing sketch");
+    port.write("\n");
+    delay(500);
+    port.write("StopSend\n");
+    delay(500);
+    exit();
+}
+
+
 void MakeAnglesDependentOnMPU6050() 
 { 
+  /*
   Bank =-Phi/5; 
+   Pitch=Theta*10; 
+   Azimuth=Psi;
+   */
+  Bank =-Phi; 
   Pitch=Theta*10; 
   Azimuth=Psi;
 }
@@ -100,7 +165,7 @@ void Horizon()
   rotate(PI+PI/6); 
   rotate(-PI/6);  
   CircularScale(); 
-  rotate(PI/6); 
+  rotate(PI/6);
 }
 void ShowAzimuth() 
 { 
@@ -113,8 +178,8 @@ void ShowAzimuth()
   fill(255); 
   text("Azimuth:  "+Azimuth1+" Deg", 80, 477, 500, 60); 
   textSize(40);
-  fill(25,25,150);
-  text("M.Furkan Bahat", -350, 477, 500, 60); 
+  fill(25, 25, 150);
+  text("M.Furkan Bahat", -350, 477, 500, 60);
 }
 void Compass() 
 { 
@@ -128,11 +193,11 @@ void Compass()
   stroke(50); 
   fill(0, 0, 40); 
   ellipse(0, 0, 610, 610); 
-  for (int k=255;k>0;k=k-5) 
+  for (int k=255; k>0; k=k-5) 
   { 
     noStroke(); 
     fill(0, 0, 255-k); 
-    ellipse(0, 0, 2*k, 2*k); 
+    ellipse(0, 0, 2*k, 2*k);
   } 
   strokeWeight(20); 
   NumberOfScaleMajorDivisions=18; 
@@ -159,7 +224,7 @@ void Compass()
   text("NE", 0, -355, 100, 50); 
   text("SW", 0, 365, 100, 50); 
   rotate(-PI/4); 
-  CompassPointer(); 
+  CompassPointer();
 }
 void CompassPointer() 
 { 
@@ -175,7 +240,7 @@ void CompassPointer()
   ellipse(0, 0, 10, 10); 
   triangle(-20, -213, 20, -213, 0, -190); 
   triangle(-15, -215, 15, -215, 0, -200); 
-  rotate(-PI-radians(Azimuth)); 
+  rotate(-PI-radians(Azimuth));
 }
 void Plane() 
 { 
@@ -184,7 +249,7 @@ void Plane()
   stroke(0, 255, 0); 
   triangle(-20, 0, 20, 0, 0, 25); 
   rect(110, 0, 140, 20); 
-  rect(-110, 0, 140, 20); 
+  rect(-110, 0, 140, 20);
 }
 void CircularScale() 
 { 
@@ -200,18 +265,18 @@ void CircularScale()
   stroke(255);
   float DivCloserPhasorLenght=GaugeWidth/2-GaugeWidth/9-StrokeWidth; 
   float DivDistalPhasorLenght=GaugeWidth/2-GaugeWidth/7.5-StrokeWidth;
-  for (int Division=0;Division<NumberOfScaleMinorDivisions+1;Division++) 
+  for (int Division=0; Division<NumberOfScaleMinorDivisions+1; Division++) 
   { 
     an=SpanAngle/2+Division*SpanAngle/NumberOfScaleMinorDivisions;  
     DivxPhasorCloser=DivCloserPhasorLenght*cos(radians(an)); 
     DivxPhasorDistal=DivDistalPhasorLenght*cos(radians(an)); 
     DivyPhasorCloser=DivCloserPhasorLenght*sin(radians(an)); 
     DivyPhasorDistal=DivDistalPhasorLenght*sin(radians(an));   
-    line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal); 
+    line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal);
   }
   DivCloserPhasorLenght=GaugeWidth/2-GaugeWidth/10-StrokeWidth; 
   DivDistalPhasorLenght=GaugeWidth/2-GaugeWidth/7.4-StrokeWidth;
-  for (int Division=0;Division<NumberOfScaleMajorDivisions+1;Division++) 
+  for (int Division=0; Division<NumberOfScaleMajorDivisions+1; Division++) 
   { 
     an=SpanAngle/2+Division*SpanAngle/NumberOfScaleMajorDivisions;  
     DivxPhasorCloser=DivCloserPhasorLenght*cos(radians(an)); 
@@ -225,15 +290,14 @@ void CircularScale()
       line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal); 
       strokeWeight(8); 
       stroke(100, 255, 100); 
-      line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal); 
-    } 
-    else 
+      line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal);
+    } else 
     { 
       strokeWeight(3); 
       stroke(255); 
-      line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal); 
-    } 
-  } 
+      line(DivxPhasorCloser, DivyPhasorCloser, DivxPhasorDistal, DivyPhasorDistal);
+    }
+  }
 }
 void Axis() 
 { 
@@ -244,7 +308,7 @@ void Axis()
   fill(100, 255, 100); 
   stroke(0); 
   triangle(0, -285, -10, -255, 10, -255); 
-  triangle(0, 285, -10, 255, 10, 255); 
+  triangle(0, 285, -10, 255, 10, 255);
 }
 void ShowAngles() 
 { 
@@ -257,7 +321,7 @@ void ShowAngles()
   Pitch=Pitch/5; 
   int Pitch1=round(Pitch);  
   text("Pitch:  "+Pitch1+" Deg", -20, 411, 500, 60); 
-  text("Bank:  "+Bank*100+" Deg", 280, 411, 500, 60); 
+  text("Bank:  "+Bank*100+" Deg", 280, 411, 500, 60);
 }
 void Borders() 
 { 
@@ -270,7 +334,7 @@ void Borders()
   fill(0); 
   noStroke(); 
   rect(4*W/5, 0, W, 2*H); 
-  rect(-4*W/5, 0, W, 2*H); 
+  rect(-4*W/5, 0, W, 2*H);
 }
 void PitchScale() 
 {  
@@ -279,22 +343,22 @@ void PitchScale()
   strokeWeight(3); 
   textSize(24); 
   textAlign(CENTER); 
-  for (int i=-4;i<5;i++) 
+  for (int i=-4; i<5; i++) 
   {  
     if ((i==0)==false) 
     { 
-      line(110, 50*i, -110, 50*i); 
+      line(110, 50*i, -110, 50*i);
     }  
     text(""+i*10, 140, 50*i, 100, 30); 
-    text(""+i*10, -140, 50*i, 100, 30); 
+    text(""+i*10, -140, 50*i, 100, 30);
   } 
   textAlign(CORNER); 
   strokeWeight(2); 
-  for (int i=-9;i<10;i++) 
+  for (int i=-9; i<10; i++) 
   {  
     if ((i==0)==false) 
     {    
-      line(25, 25*i, -25, 25*i); 
-    } 
-  } 
+      line(25, 25*i, -25, 25*i);
+    }
+  }
 }
