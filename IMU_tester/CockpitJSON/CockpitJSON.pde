@@ -1,15 +1,11 @@
-//Thanks to Adrian Fernandez //<>// //<>//
-//Communication updates by M.Furkan Bahat November 2014
-//For more information http://mfurkanbahat.blogspot.com.tr/
+import processing.serial.*; //<>//
 
-import processing.serial.*;
-//import cc.arduino.*;
-
+Table table;
 
 class raw {
-  int x;
-  int y;
-  int z;
+  float x;
+  float y;
+  float z;
 };
 
 raw acceleration = new raw();
@@ -22,13 +18,15 @@ int W=1400; //My Laptop's screen width
 int H=700;  //My Laptop's screen height 
 float Pitch; 
 float Bank; 
-float Azimuth; 
+//float Azimuth; 
+float heading; 
 float ArtificialHoizonMagnificationFactor=0.7; 
 float CompassMagnificationFactor=0.85; 
 float SpanAngle=120; 
 int NumberOfScaleMajorDivisions; 
 int NumberOfScaleMinorDivisions; 
 PVector v1, v2; 
+float DECLINATION=3.52; // Declination (degrees) in Naples.
 
 
 Serial port;
@@ -47,8 +45,18 @@ void setup()
   strokeCap(SQUARE);//Optional 
   port = new Serial(this, my_port, 115200);
   port.bufferUntil('\n');
-
-
+  table = new Table();
+  //add a column header "Data" for the collected data
+  table.addColumn("ts");
+  table.addColumn("ax");
+  table.addColumn("ay");
+  table.addColumn("az");
+  table.addColumn("gx");
+  table.addColumn("gy");
+  table.addColumn("gz");
+  table.addColumn("mx");
+  table.addColumn("my");
+  table.addColumn("mz");
   //println(Serial.list()); //Shows your connected serial ports
 }
 void draw() 
@@ -65,15 +73,17 @@ void draw()
   Plane(); 
   ShowAngles(); 
   Compass(); 
-  ShowAzimuth();
+  //ShowAzimuth();
 }
 void serialEvent(Serial myPort) //Reading the datas by Processing.
 {
-  float roll, pitch, yaw, yaw2;
+  float roll, pitch, yaw, yaw2, norm;
+  int Timestamp;
   try {
     String myString = myPort.readStringUntil('\n');
     println(myString);
     JSONObject json = parseJSONObject(myString);
+    Timestamp = json.getInt("ts");
     JSONArray accel = json.getJSONArray("a");
     JSONArray gyro = json.getJSONArray("g");
     JSONArray mag = json.getJSONArray("m");
@@ -86,12 +96,43 @@ void serialEvent(Serial myPort) //Reading the datas by Processing.
     magnetic.x=mag.getInt(0);
     magnetic.y=mag.getInt(1);
     magnetic.z=mag.getInt(2);
+    //add a new row for each value
+    TableRow newRow = table.addRow();
+    //place the new row and value under the "Data" column
+    newRow.setInt("ts", Timestamp);
+    newRow.setFloat("ax", acceleration.x);
+    newRow.setFloat("ay", acceleration.y);
+    newRow.setFloat("az", acceleration.z);
+    newRow.setFloat("gx", gyroscope.x);
+    newRow.setFloat("gy", gyroscope.y);
+    newRow.setFloat("gz", gyroscope.z);
+    newRow.setFloat("mx", magnetic.x);
+    newRow.setFloat("my", magnetic.y);
+    newRow.setFloat("mz", magnetic.z);
+
+
     roll = atan2(acceleration.y, acceleration.z);
     if (acceleration.y * sin(roll) + acceleration.z * cos(roll) == 0)
       pitch = acceleration.x > 0 ? (PI / 2) : (-PI / 2);
     else
       pitch = (float)atan(-acceleration.x / (acceleration.y * sin(roll) + acceleration.z * cos(roll)));
     yaw = atan2((magnetic.z * sin(roll) - magnetic.y * cos(roll)), (magnetic.x * cos(pitch) + magnetic.y * sin(pitch) * sin(roll) + magnetic.z * sin(pitch) * cos(roll)));
+    float   mx = mag.getInt(0);
+    float   my = mag.getInt(1);
+    float   mz = mag.getInt(2);
+    norm = sqrt(mag.getInt(0) * mag.getInt(0) + mag.getInt(1) * mag.getInt(1) + mag.getInt(2) * mag.getInt(2));
+    if (norm == 0.0f) return; // handle NaN
+    norm = 1.0f / norm;        // use reciprocal for division
+    mx = mx * norm;
+    my = my * norm;
+    mz = mz * norm;
+    heading = atan2(mx, my);
+    heading -= DECLINATION * PI / 180;
+
+    if (heading > PI) heading -= (2 * PI);
+    else if (heading < -PI) heading += (2 * PI);
+    else if (heading < 0) heading += 2 * PI;
+
     yaw2 = 180 * atan2(magnetic.x, magnetic.y)/PI;
     println("ax: "+accel.getInt(0)+" ay: "+accel.getInt(1)+" az: "+accel.getInt(2));
     println("gx: "+gyro.getInt(0)+" gy: "+gyro.getInt(1)+" gz: "+gyro.getInt(2));
@@ -99,7 +140,7 @@ void serialEvent(Serial myPort) //Reading the datas by Processing.
     println("roll: "+degrees(roll)+" pitch: "+degrees(pitch)+" yaw: "+degrees(yaw)+" yaw2: "+yaw2);
     Phi = -roll; //radians(roll); 
     Theta = degrees(pitch); //radians(pitch); 
-    Psi = degrees(yaw); 
+    Psi = degrees(yaw);
 
     /*
   float sensors[] = float(split(myString, ':'));  
@@ -127,12 +168,13 @@ void serialEvent(Serial myPort) //Reading the datas by Processing.
 }
 
 void mousePressed() {
-    println("Closing sketch");
-    port.write("\n");
-    delay(500);
-    port.write("StopSend\n");
-    delay(500);
-    exit();
+  println("Closing sketch");
+  saveTable(table, "datalog.csv");
+  port.write("\n");
+  delay(500);
+  port.write("StopSend\n");
+  delay(500);
+  exit();
 }
 
 
@@ -144,8 +186,8 @@ void MakeAnglesDependentOnMPU6050()
    Azimuth=Psi;
    */
   Bank =-Phi; 
-  Pitch=Theta*10; 
-  Azimuth=Psi;
+  Pitch=Theta*5; 
+  //Azimuth=Psi;
 }
 void Horizon() 
 { 
@@ -167,20 +209,23 @@ void Horizon()
   CircularScale(); 
   rotate(PI/6);
 }
+/*
 void ShowAzimuth() 
-{ 
-  fill(50); 
-  noStroke(); 
-  rect(20, 470, 440, 50); 
-  int Azimuth1=round(Azimuth); 
-  textAlign(CORNER); 
-  textSize(35); 
-  fill(255); 
-  text("Azimuth:  "+Azimuth1+" Deg", 80, 477, 500, 60); 
-  textSize(40);
-  fill(25, 25, 150);
-  text("M.Furkan Bahat", -350, 477, 500, 60);
-}
+ { 
+ fill(50); 
+ noStroke(); 
+ rect(20, 470, 440, 50); 
+ int Azimuth1=round(Azimuth); 
+ textAlign(CORNER); 
+ textSize(35); 
+ fill(255); 
+ text("Azimuth:  "+Azimuth1+" Deg", 80, 477, 500, 60); 
+ textSize(40);
+ fill(25, 25, 150);
+ text("M.Furkan Bahat", -350, 477, 500, 60);
+ }
+ */
+
 void Compass() 
 { 
   translate(2*W/3, 0); 
@@ -228,7 +273,7 @@ void Compass()
 }
 void CompassPointer() 
 { 
-  rotate(PI+radians(Azimuth));  
+  rotate(PI+heading);  
   stroke(0); 
   strokeWeight(4); 
   fill(100, 255, 100); 
@@ -240,8 +285,9 @@ void CompassPointer()
   ellipse(0, 0, 10, 10); 
   triangle(-20, -213, 20, -213, 0, -190); 
   triangle(-15, -215, 15, -215, 0, -200); 
-  rotate(-PI-radians(Azimuth));
+  rotate(-PI-heading);
 }
+
 void Plane() 
 { 
   fill(0); 

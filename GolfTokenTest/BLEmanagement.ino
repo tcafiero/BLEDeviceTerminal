@@ -1,3 +1,4 @@
+#define ADV_TIMEOUT 20 // 20 sec
 void bleout( char* b, int len, int blocklen )
 {
   int block;
@@ -31,14 +32,15 @@ void startAdv(void)
      https://developer.apple.com/library/content/qa/qa1931/_myIndex.html
   */
   Bluefruit.Advertising.restartOnDisconnect(true);
-  Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
+  //Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
+  Bluefruit.Advertising.setInterval(1000, 1000);    // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds
+  Bluefruit.Advertising.start(ADV_TIMEOUT);                // 0 = Don't stop advertising after n seconds
 }
 
 void configureBLE()
 {
-  Bluefruit.autoConnLed(true);
+  Bluefruit.autoConnLed(false);
 
   // Config the peripheral connection with maximum bandwidth
   // more SRAM required by SoftDevice
@@ -74,6 +76,7 @@ void BLEconnect_callback(uint16_t conn_handle)
   Bluefruit.Gap.getPeerName(conn_handle, central_name, sizeof(central_name));
   Serial.print("Connected to ");
   Serial.println(central_name);
+  
 }
 
 void BLEdisconnect_callback(uint16_t conn_handle, uint8_t reason)
@@ -82,5 +85,12 @@ void BLEdisconnect_callback(uint16_t conn_handle, uint8_t reason)
   (void) reason;
   Serial.println();
   Serial.println("Disconnected");
+  NVIC_SystemReset();
 }
+
+void adv_stop_callback(void)
+{
+  startAdv();
+}
+
 

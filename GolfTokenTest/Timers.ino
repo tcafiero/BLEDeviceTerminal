@@ -35,7 +35,7 @@ void SendDataReadCallback( TimerHandle_t xTimer )
   if (DoSend)
   {
     digitalWrite(PIN_LED2, !digitalRead(PIN_LED2));
-    printRaw(imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz, imu.mx, imu.my, imu.mz);
+    printRaw(ts.get(), imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz, imu.mx, imu.my, imu.mz);
 #if 0
     printAttitude(imu.ax, imu.ay, imu.az,
                   -imu.my, -imu.mx, imu.mz);
