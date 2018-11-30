@@ -18,7 +18,7 @@ int W=1400; //My Laptop's screen width
 int H=700;  //My Laptop's screen height 
 float Pitch; 
 float Bank; 
-//float Azimuth; 
+float Azimuth; 
 float heading; 
 float ArtificialHoizonMagnificationFactor=0.7; 
 float CompassMagnificationFactor=0.85; 
@@ -73,11 +73,11 @@ void draw()
   Plane(); 
   ShowAngles(); 
   Compass(); 
-  //ShowAzimuth();
+  ShowAzimuth();
 }
 void serialEvent(Serial myPort) //Reading the datas by Processing.
 {
-  float roll, pitch, yaw, yaw2, norm;
+  float roll, pitch, yaw, yaw2;
   int Timestamp;
   try {
     String myString = myPort.readStringUntil('\n');
@@ -117,10 +117,14 @@ void serialEvent(Serial myPort) //Reading the datas by Processing.
     else
       pitch = (float)atan(-acceleration.x / (acceleration.y * sin(roll) + acceleration.z * cos(roll)));
     yaw = atan2((magnetic.z * sin(roll) - magnetic.y * cos(roll)), (magnetic.x * cos(pitch) + magnetic.y * sin(pitch) * sin(roll) + magnetic.z * sin(pitch) * cos(roll)));
+    yaw2 = 180 * atan2(magnetic.x, magnetic.y)/PI;
+    println("ax: "+accel.getInt(0)+" ay: "+accel.getInt(1)+" az: "+accel.getInt(2));
+    println("gx: "+gyro.getInt(0)+" gy: "+gyro.getInt(1)+" gz: "+gyro.getInt(2));
+    println("mx: "+mag.getInt(0)+" gy: "+mag.getInt(1)+" gz: "+mag.getInt(2));
     float   mx = mag.getInt(0);
     float   my = mag.getInt(1);
     float   mz = mag.getInt(2);
-    norm = sqrt(mag.getInt(0) * mag.getInt(0) + mag.getInt(1) * mag.getInt(1) + mag.getInt(2) * mag.getInt(2));
+    float  norm = sqrt(mag.getInt(0) * mag.getInt(0) + mag.getInt(1) * mag.getInt(1) + mag.getInt(2) * mag.getInt(2));
     if (norm == 0.0f) return; // handle NaN
     norm = 1.0f / norm;        // use reciprocal for division
     mx = mx * norm;
@@ -132,16 +136,11 @@ void serialEvent(Serial myPort) //Reading the datas by Processing.
     if (heading > PI) heading -= (2 * PI);
     else if (heading < -PI) heading += (2 * PI);
     else if (heading < 0) heading += 2 * PI;
-
-    yaw2 = 180 * atan2(magnetic.x, magnetic.y)/PI;
-    println("ax: "+accel.getInt(0)+" ay: "+accel.getInt(1)+" az: "+accel.getInt(2));
-    println("gx: "+gyro.getInt(0)+" gy: "+gyro.getInt(1)+" gz: "+gyro.getInt(2));
-    println("mx: "+mag.getInt(0)+" gy: "+mag.getInt(1)+" gz: "+mag.getInt(2));
-    println("roll: "+degrees(roll)+" pitch: "+degrees(pitch)+" yaw: "+degrees(yaw)+" yaw2: "+yaw2);
     Phi = -roll; //radians(roll); 
     Theta = degrees(pitch); //radians(pitch); 
-    Psi = degrees(yaw);
-
+    //Psi = degrees(yaw);
+    Psi = degrees(heading);
+    println("roll: "+degrees(roll)+" pitch: "+degrees(pitch)+" yaw: "+degrees(yaw)+" heading: "+degrees(heading));    
     /*
   float sensors[] = float(split(myString, ':'));  
      roll = sensors[0];
@@ -187,7 +186,7 @@ void MakeAnglesDependentOnMPU6050()
    */
   Bank =-Phi; 
   Pitch=Theta*5; 
-  //Azimuth=Psi;
+  Azimuth=Psi;
 }
 void Horizon() 
 { 
@@ -209,7 +208,7 @@ void Horizon()
   CircularScale(); 
   rotate(PI/6);
 }
-/*
+
 void ShowAzimuth() 
  { 
  fill(50); 
@@ -224,7 +223,6 @@ void ShowAzimuth()
  fill(25, 25, 150);
  text("M.Furkan Bahat", -350, 477, 500, 60);
  }
- */
 
 void Compass() 
 { 
@@ -271,9 +269,10 @@ void Compass()
   rotate(-PI/4); 
   CompassPointer();
 }
+
 void CompassPointer() 
 { 
-  rotate(PI+heading);  
+  rotate(PI+radians(degrees(heading)));  
   stroke(0); 
   strokeWeight(4); 
   fill(100, 255, 100); 
@@ -285,9 +284,8 @@ void CompassPointer()
   ellipse(0, 0, 10, 10); 
   triangle(-20, -213, 20, -213, 0, -190); 
   triangle(-15, -215, 15, -215, 0, -200); 
-  rotate(-PI-heading);
+  rotate(-PI-radians(degrees(heading)));
 }
-
 void Plane() 
 { 
   fill(0); 

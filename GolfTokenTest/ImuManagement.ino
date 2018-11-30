@@ -6,6 +6,7 @@ const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to
 const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel (12)
 const int INTM_PIN_THS = (14); //ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5 (14)
 const int RDYM_PIN = ARDUINO_4_PIN;  // RDY pin to D8
+bool thresholdAccelGyro_flag;
 
 
 
@@ -224,16 +225,44 @@ void configureLSM9DS1Interrupts()
   imu.configMagThs(10000);
 }
 
+void thresholdAccelGyro_isr()
+{
+  thresholdAccelGyro_flag = true;
+}
+
+
+void imuDataSampling()
+{
+  record_t* record;
+  //if (cb.getSemaphore() == RED) return;
+  record = cb.getRecord();
+  record->a.x = imu.ax;
+  record->a.y = imu.ay;
+  record->a.z = imu.az;
+  record->g.x = imu.gx;
+  record->g.y = imu.gy;
+  record->g.z = imu.gz;
+  record->m.x = imu.mx;
+  record->m.y = imu.my;
+  record->m.z = imu.mz;
+  record->ts = ts.get();
+  //cb.trigger(0);
+}
 
 
 uint16_t initLSM9DS1()
 {
+  //pinMode(INT2_PIN_DRDY, INPUT_PULLUP);
+  pinMode(INT1_PIN_THS, INPUT_PULLUP);
+  //pinMode(INTM_PIN_THS, INPUT_PULLUP);
   setupDevice(); // Setup general device parameters
   setupGyro(); // Set up gyroscope parameters
   setupAccel(); // Set up accelerometer parameters
   setupMag(); // Set up magnetometer parameters
   setupTemperature(); // Set up temp sensor parameter
-  //configureLSM9DS1Interrupts();
+  thresholdAccelGyro_flag = false;
+  attachInterrupt(digitalPinToInterrupt(INT1_PIN_THS), thresholdAccelGyro_isr, FALLING);
+  configureLSM9DS1Interrupts();
   return imu.begin();
 }
 

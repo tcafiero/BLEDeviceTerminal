@@ -3,6 +3,7 @@
 
 #include <pca10040.h>
 
+
 #include <Wire.h>
 #include <SPI.h>
 #include <SparkFunLSM9DS1.h>
@@ -24,8 +25,8 @@
 //#define DEBUG 1
 #define GREEN true
 #define RED false
-#define PRINT_CALCULATED
-#define IMU_SAMPLING_PERIOD 20 // ms
+#define PRINTRAW
+#define IMU_SAMPLING_PERIOD 12 // ms
 #define IMU_SENDING_PERIOD 250 // ms
 
 // BLE Service
@@ -52,6 +53,7 @@ void setup() {
   // Before initializing the IMU, there are a few settings
   // we may need to adjust. Use the settings struct to set
   // the device's communication mode and addresses:
+  #if 1
   if (!initLSM9DS1())
   {
     Serial.println("Failed to communicate with LSM9DS1.");
@@ -61,17 +63,18 @@ void setup() {
                    "Breakout, but may need to be modified " \
                    "if the board jumpers are.");
   };
+  #endif
+  #if 0
   cb.begin();
   ts.begin();
   configureTimers();
-#if 0
   configureTasks();
-#endif
   InitMicroShell();
   //suspendLoop();
-  SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+  //SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
   /* Start FreeRTOS scheduler. In this case useless because Arduino environment yet started it*/
   //vTaskStartScheduler();
+  #endif
 }
 
 void loop() {
@@ -81,7 +84,7 @@ void loop() {
     MicroShell();
   }
   // Request CPU to enter low-power mode until an event/interrupt occurs
-  vTaskDelay(200);
-  waitForEvent();
+    vTaskDelay(2000);
+  //waitForEvent();
 }
 

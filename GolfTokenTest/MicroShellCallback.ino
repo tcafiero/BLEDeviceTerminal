@@ -1,6 +1,5 @@
 #include "TimeStampManager.h"
 bool DoSend;
-bool thresholdAccelGyro_flag;
 
 extern TimestampManager ts;
 
