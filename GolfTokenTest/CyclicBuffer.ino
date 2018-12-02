@@ -69,6 +69,7 @@ void CyclicBuffer::sendCapturedRecords()
 {
   char b[100];
   if (n == 0) return;
+  setSemaphore(RED);
   int i = getHead();
   for (int j = 0; j < n-1; j++)
   {
@@ -80,6 +81,7 @@ void CyclicBuffer::sendCapturedRecords()
     i++;
     i %= BUFFERSIZE;
   }
+  setSemaphore(GREEN);
 }
 
 

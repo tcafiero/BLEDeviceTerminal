@@ -5,8 +5,10 @@ void bleout( char* b, int len, int blocklen )
   for (block = 0; block < len / blocklen; block++)
   {
     bleuart.write(&b[block * blocklen], blocklen);
+    //vTaskDelay(20);
   }
   bleuart.write(&b[block * blocklen], len % blocklen);
+  //vTaskDelay(20);
 }
 
 void startAdv(void)
@@ -76,7 +78,7 @@ void BLEconnect_callback(uint16_t conn_handle)
   Bluefruit.Gap.getPeerName(conn_handle, central_name, sizeof(central_name));
   Serial.print("Connected to ");
   Serial.println(central_name);
-  
+
 }
 
 void BLEdisconnect_callback(uint16_t conn_handle, uint8_t reason)

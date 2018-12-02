@@ -3,6 +3,12 @@
 
 #include <pca10040.h>
 
+#define HERE(condition) if(condition){\
+  Serial.print("Reached ");\
+  Serial.print(__FILE__);\
+  Serial.print(" line: ");\
+  Serial.println(__LINE__);\
+  };
 
 #include <Wire.h>
 #include <SPI.h>
@@ -21,13 +27,14 @@
 #include <MicroShell.h>
 #include "TimeStampManager.h"
 #include "CyclicBuffer.h"
+#include "Trigger.h"
 
 //#define DEBUG 1
 #define GREEN true
 #define RED false
 #define PRINTRAW
 #define IMU_SAMPLING_PERIOD 12 // ms
-#define IMU_SENDING_PERIOD 250 // ms
+#define IMU_SENDING_PERIOD 2500 // ms
 
 // BLE Service
 BLEDis  bledis;
@@ -36,6 +43,7 @@ BLEBas  blebas;
 
 extern TimestampManager ts;
 extern CyclicBuffer cb;
+extern Trigger tr;
 
 
 //////////////////////////
@@ -53,7 +61,6 @@ void setup() {
   // Before initializing the IMU, there are a few settings
   // we may need to adjust. Use the settings struct to set
   // the device's communication mode and addresses:
-  #if 1
   if (!initLSM9DS1())
   {
     Serial.println("Failed to communicate with LSM9DS1.");
@@ -62,19 +69,20 @@ void setup() {
                    "work for an out of the box LSM9DS1 " \
                    "Breakout, but may need to be modified " \
                    "if the board jumpers are.");
-  };
-  #endif
-  #if 0
+    while(1);
+  }
+  else Serial.println("LSM9DS1 connected");
   cb.begin();
   ts.begin();
+  tr.begin();
   configureTimers();
   configureTasks();
+  configureInterrupts();
   InitMicroShell();
   //suspendLoop();
   //SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
   /* Start FreeRTOS scheduler. In this case useless because Arduino environment yet started it*/
   //vTaskStartScheduler();
-  #endif
 }
 
 void loop() {

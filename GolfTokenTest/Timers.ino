@@ -29,7 +29,7 @@ void configureTimers()
                it expires. */
              tsTimer_callback
            );
-  xTimerStart( Timer1, 0 );
+  //xTimerStart( Timer1, 0 );
 }
 
 

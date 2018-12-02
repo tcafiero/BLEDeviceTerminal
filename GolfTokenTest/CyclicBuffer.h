@@ -13,7 +13,6 @@ typedef struct {
   vector_t a;
   vector_t g;
   vector_t m;
-  uint16_t t;
   unsigned long int ts;
 } record_t;
 
