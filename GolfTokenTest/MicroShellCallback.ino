@@ -7,7 +7,8 @@ char* TemplateFunc(int a, char* b)
 {
   static char buf[50];
   sprintf(buf, "a+1=%d and b=%s\n", a + 1, b);
-  bleuart.write( buf, strlen(buf) );
+  //bleSerial.write( buf, strlen(buf) );
+  bleSerial.print(buf);
   return buf;
 }
 
@@ -33,8 +34,10 @@ char* SendFastBuffer()
 char* BatteryStatus()
 {
   /* to be implemented */
-  char buf[] = "100\%";
-  bleuart.write( buf, strlen(buf) );
+  //char buf[] = "100\%";
+  //bleSerial.write( buf, strlen(buf) );
+  bleSerial.println("100\%");
+
   return "ok";
 }
 
@@ -42,8 +45,9 @@ char* ResetTimestamp()
 {
   /* to be implemented */
   ts.begin();
-  char buf[] = "Timestamp cleared.\n";
-  bleuart.write( buf, strlen(buf) );
+  //char buf[] = "Timestamp cleared.\n";
+  //bleSerial.write( buf, strlen(buf) );
+  bleSerial.print("Timestamp cleared.\n");
   return "ok";
 }
 

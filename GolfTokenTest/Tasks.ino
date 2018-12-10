@@ -1,7 +1,12 @@
-TaskHandle_t  led_toggle_task1_handle;
-TaskHandle_t  led_toggle_task2_handle;
+TaskHandle_t  samplingData_task_handle;
+TaskHandle_t  led2_toggle_task_handle;
 TaskHandle_t  thresholdAccelGyro_task_handle;
 TaskHandle_t  SendDataRead_task_handle;
+TaskHandle_t  IoTloop_task_handle;
+
+static void IoTloop (void *);
+//static void BLEloop (void *);
+
 
 static void thresholdAccelGyro_task_function (void * pvParameter)
 {
@@ -12,50 +17,47 @@ static void thresholdAccelGyro_task_function (void * pvParameter)
       thresholdAccelGyro_flag = false;
       cb.sendCapturedRecords();
     }
-    vTaskDelay(10);
+    WAIT(10);
   }
 }
 
 
-static void led_toggle_task1_function (void * pvParameter)
+static void samplingData_task_function (void * pvParameter)
 {
   TickType_t xLastWakeTime;
-  const TickType_t xSamplingPeriod = IMU_SAMPLING_PERIOD;
+  const TickType_t xSamplingPeriod = IMU_SAMPLING_PERIOD * 1000 / 30;
   // Initialise the xLastWakeTime variable with the current time.
-  xLastWakeTime = xTaskGetTickCount();
+  //xLastWakeTime = xTaskGetTickCount();
   while (true)
   {
-    vTaskDelayUntil( &xLastWakeTime, xSamplingPeriod );
-    xLastWakeTime = xTaskGetTickCount();
+    //vTaskDelayUntil( &xLastWakeTime, xSamplingPeriod );
+    //xLastWakeTime = xTaskGetTickCount();
     // Perform action here.
-    digitalWrite(PIN_LED1, !digitalRead(PIN_LED1));
+    digitalWrite(D6, !digitalRead(D6));
     imuRead();
     if (tr.zeroCrossing(imu.ay))
     {
       cb.sendCapturedRecords();
     }
-    imuDataSampling(xLastWakeTime);
+    imuDataSampling(ts.get());
+    vTaskDelay(xSamplingPeriod);
     /* Tasks must be implemented to never return... */
   }
 }
 
-static void led_toggle_task2_function (void * pvParameter)
+static void led2_toggle_task_function (void * pvParameter)
 {
   UNUSED_PARAMETER(pvParameter);
   TickType_t xLastWakeTime;
-  const TickType_t xSamplingPeriod = 500;
+  const TickType_t xSamplingPeriod = 500 * 1000 / 30;
   // Initialise the xLastWakeTime variable with the current time.
-  xLastWakeTime = xTaskGetTickCount();
+  //xLastWakeTime = xTaskGetTickCount();
   while (true)
   {
-    vTaskDelayUntil( &xLastWakeTime, xSamplingPeriod );
-    xLastWakeTime = xTaskGetTickCount();
-    digitalWrite(PIN_LED2, !digitalRead(PIN_LED2));
-    //printAttitude(imu.ax, imu.ay, imu.az,
-    //                  -imu.my, -imu.mx, imu.mz);
-    /* Delay a task for a given number of ticks */
-    vTaskDelay(500);
-    /* Tasks must be implemented to never return... */
+    //vTaskDelayUntil( &xLastWakeTime, xSamplingPeriod );
+    //xLastWakeTime = xTaskGetTickCount();
+    digitalWrite(D7, !digitalRead(D7));
+    vTaskDelay(xSamplingPeriod);
   }
 }
 
@@ -67,21 +69,24 @@ static void SendDataRead_task_function (void * pvParameter)
     {
 #ifdef PRINTRAW
       printRaw(xTaskGetTickCount(), imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz, imu.mx, imu.my, imu.mz);
-#elif
+#else
       printAttitude(imu.ax, imu.ay, imu.az,
                     -imu.my, -imu.mx, imu.mz);
 #endif
     }
-    vTaskDelay(IMU_SENDING_PERIOD);
+    WAIT(IMU_SENDING_PERIOD);
   }
 }
 
 
 void configureTasks()
 {
-  UNUSED_VARIABLE(xTaskCreate(led_toggle_task1_function, "LED0", configMINIMAL_STACK_SIZE + 200, NULL, 2, &led_toggle_task1_handle));
-  UNUSED_VARIABLE(xTaskCreate(led_toggle_task2_function, "LED1", configMINIMAL_STACK_SIZE + 200, NULL, 2, &led_toggle_task2_handle));
-  //UNUSED_VARIABLE(xTaskCreate(thresholdAccelGyro_task_function, "LED1", configMINIMAL_STACK_SIZE + 200, NULL, 2, &thresholdAccelGyro_task_handle));
-  UNUSED_VARIABLE(xTaskCreate(SendDataRead_task_function, "LED1", configMINIMAL_STACK_SIZE + 200, NULL, 2, &SendDataRead_task_handle));
+  pinMode(D6, OUTPUT);
+  pinMode(D7, OUTPUT);
+  UNUSED_VARIABLE(xTaskCreate(samplingData_task_function, "LED1", configMINIMAL_STACK_SIZE + 1500, NULL, 2, &samplingData_task_handle));
+  UNUSED_VARIABLE(xTaskCreate(led2_toggle_task_function, "LED2", configMINIMAL_STACK_SIZE + 1500, NULL, 2, &led2_toggle_task_handle));
+  //UNUSED_VARIABLE(xTaskCreate(thresholdAccelGyro_task_function, "thresholdAccel", configMINIMAL_STACK_SIZE + 200, NULL, 2, &thresholdAccelGyro_task_handle));
+  UNUSED_VARIABLE(xTaskCreate(SendDataRead_task_function, "SendDataRead", configMINIMAL_STACK_SIZE + 1500, NULL, 2, &SendDataRead_task_handle));
+  UNUSED_VARIABLE(xTaskCreate(IoTloop, "IoTloop", configMINIMAL_STACK_SIZE + 1500, NULL, 2, &IoTloop_task_handle));
 }
 

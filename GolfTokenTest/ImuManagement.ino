@@ -1,11 +1,17 @@
+#include <pins_arduino.h>
+#include <Wire.h>
+#include <SPI_Master.h>
+#include <SparkFunLSM9DS1.h>
+
 ///////////////////////////////
 // Interrupt Pin Definitions //
 ///////////////////////////////
 // These can be swapped to any available digital pin:
-const int INT1_PIN_THS = ARDUINO_2_PIN; //2 INT1 pin to D3 - will be attached to gyro (13)
-const int INT2_PIN_DRDY = ARDUINO_1_PIN; //1 INT2 pin to D4 - attached to accel (12)
-const int INTM_PIN_THS = (14); //ARDUINO_5_PIN;  //5 INTM_PIN_THS pin to D5 (14)
-const int RDYM_PIN = ARDUINO_4_PIN;  // RDY pin to D8
+// These can be swapped to any available digital pin:
+const int INT1_PIN_THS = 3; // INT1 pin to D3 - will be attached to gyro
+const int INT2_PIN_DRDY = 4; // INT2 pin to D4 - attached to accel
+const int INTM_PIN_THS = 5;  // INTM_PIN_THS pin to D5
+const int RDYM_PIN = 6;  // RDY pin to D6
 bool thresholdAccelGyro_flag;
 
 

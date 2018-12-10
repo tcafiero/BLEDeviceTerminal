@@ -6,11 +6,11 @@ TimerHandle_t Timer1;
 
 void tsTimer_callback()
 {
-  ts.inc();
 }
 
 void configureTimers()
 {
+  #if 0
   Timer1 = xTimerCreate
            ( /* Just a text name, not used by the RTOS
                      kernel. */
@@ -30,6 +30,7 @@ void configureTimers()
              tsTimer_callback
            );
   //xTimerStart( Timer1, 0 );
+  #endif
 }
 
 

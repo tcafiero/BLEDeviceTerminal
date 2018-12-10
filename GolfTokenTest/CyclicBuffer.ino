@@ -75,7 +75,7 @@ void CyclicBuffer::sendCapturedRecords()
   {
     #ifdef PRINTRAW
     printRaw( record[i].ts, record[i].a.x, record[i].a.y, record[i].a.z, record[i].g.x, record[i].g.y, record[i].g.z, record[i].m.x, record[i].m.y, record[i].m.z);
-    #elif
+    #else
     printAttitude( (float)record[i].a.x, (float)record[i].a.y, (float)record[i].a.z, (float)record[i].m.x, (float)record[i].m.y, (float)record[i].m.z);
     #endif
     i++;

@@ -5,6 +5,6 @@ void thresholdAccelGyro_isr()
 
 void configureInterrupts()
 {
-  attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
+  //attachInterrupt(INT1_PIN_THS, thresholdAccelGyro_isr, FALLING);
 }
 
